@@ -1,0 +1,1048 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.13.6
+  kernelspec:
+    display_name: venv
+    language: python
+    name: venv
+---
+
+# Анализ астроцитов
+
+
+Подключение библиотек
+
+```{python}
+# %pylab inline
+```
+
+```{python}
+import os
+import sys
+import ccdb
+import napari
+
+from importlib import reload
+
+from tqdm.auto import tqdm
+from scipy import ndimage as ndi
+```
+
+```{python}
+import hessian_cecp as hcecp
+from imfun import fseq
+```
+
+```{python}
+from astromorpho import io as aio
+from astromorpho import enh, morpho
+```
+
+```{python}
+sys.path.append('/home/incredible/Neuroscience/lib')
+
+import elliptic_fourie as elfr
+```
+
+Настройка глобальных пременных для графиков
+
+```{python}
+rc('image', aspect='equal', interpolation='nearest',cmap='gray')
+rc('figure', figsize=(10,10))
+rc('axes', grid=True, labelsize=16)
+```
+
+```{python}
+def show_napari(img, name):
+    return napari.view_image(img, name=name, ndisplay=3, rendering='attenuated_mip', gamma=1)
+```
+
+```{python}
+def add_napari(img, w, name):
+    w.add_image(img, name=name, gamma=0.6, opacity=0.5)
+```
+
+Путь к изображениям
+
+```{python}
+data_path = '/home/incredible/Neuroscience/selected-for-complexity/data'
+```
+
+```{python}
+# names = !ls $data_path/*.pic
+names = [name for name in names if not 'hm' in name or not 'red' in name]
+```
+
+```{python}
+names.pop(names.index('/home/incredible/Neuroscience/selected-for-complexity/data/4wk-both5-red-raw.pic'))
+```
+
+## Выбираем рандомную картинку
+
+```{python}
+k = randint(len(names))
+k = 0
+k = names.index('/home/incredible/Neuroscience/selected-for-complexity/data/3wk-ly1-raw.pic')
+print(k, names[k])
+stack, meta = ccdb.read_pic(names[k])
+# stack, meta = ccdb.read_pic('/home/incredible/Neuroscience/selected-for-complexity/data/1wk-both8-red-raw.pic')
+dims = ccdb.get_axes(meta)#[::-1]
+dims
+```
+
+```{python}
+if len(dims):
+    zoom = dims[0][0]/dims[-1][0]
+else:
+    zoom = 4
+```
+
+```{python}
+1/zoom
+```
+
+```{python}
+stackz = ndi.zoom(stack.astype(float),(1, zoom,zoom))
+stack.shape, stackz.shape
+```
+
+```{python}
+imshow(stackz.max(0))
+```
+
+```{python}
+w = napari.view_image(stackz, ndisplay=3, rendering='attenuated_mip', gamma=0.6)
+```
+
+###  Предобработка изображений
+
+
+Применяем фильтр Сато для обнаружения волокон
+
+```{python}
+# %time data_sato, Vf = hcecp.sato3d(stackz, 1, return_vectors=True)
+show_napari(data_sato, name='data_sato')
+```
+
+Сглаживание?
+
+```{python}
+# %time stackz_sato = hcecp.percentile_rescale(data_sato)
+show_napari(stackz_sato, name='stackz_sato')
+```
+
+### Threshold
+
+```{python}
+from skimage.filters import threshold_otsu, rank, threshold_yen, threshold_isodata, threshold_li, \
+                            threshold_local, threshold_minimum, threshold_mean, threshold_niblack, \
+                            threshold_sauvola, threshold_triangle#, threshold_adaptive
+from skimage.morphology import disk
+from skimage.filters import rank
+
+from skimage.exposure import adjust_gamma
+import cv2 as cv
+```
+
+```{python}
+def apply_thresh(image, thresh_func, shape, **kwargs):
+    thresh = thresh_func(image, **kwargs)
+    binary = full_img >= thresh
+    filtered_image = np.where(binary, image, 0)
+    return filtered_image.reshape(shape), thresh
+```
+
+```{python}
+thresh_image = hcecp.percentile_rescale(stackz)
+```
+
+```{python}
+gamma_image_06 = adjust_gamma(thresh_image, gamma=0.6)
+gamma_image_1 = adjust_gamma(thresh_image, gamma=1)
+```
+
+```{python}
+w = show_napari(gamma_image_1, name='start_img_gamma_1')
+```
+
+```{python}
+IMG_SHAPE = thresh_image.shape
+
+```
+
+```{python}
+full_img_06 = gamma_image_06.reshape((IMG_SHAPE[0], -1))
+full_img_06.shape
+```
+
+```{python}
+full_img = gamma_image_1.reshape((IMG_SHAPE[0], -1))
+full_img.shape
+```
+
+#### Yen - Little
+
+
+гамма = 0,6
+
+```{python}
+yen_img, yen_thresh = apply_thresh(full_img_06, threshold_yen, IMG_SHAPE)
+```
+
+```{python}
+add_napari(yen_img, name='yen_img', w=w)
+```
+
+#### Isodata - More
+
+
+гамма = 0,6
+
+```{python}
+iso_img, iso_thresh = apply_thresh(full_img_06, threshold_isodata, IMG_SHAPE)
+```
+
+```{python}
+add_napari(iso_img, name='iso_img', w=w)
+```
+
+#### Li - Near Triangle
+
+
+гамма = 1
+
+```{python}
+li_img, li_thresh = apply_thresh(full_img, threshold_li, IMG_SHAPE)
+add_napari(li_img, name='li_img', w=w)
+```
+
+#### Local - Failed
+
+
+гамма = 0.6
+
+```{python}
+local_img, local_thresh = apply_thresh(full_img_06, threshold_local, IMG_SHAPE, block_size=3)
+add_napari(local_img, name='local_img', w=w)
+```
+
+#### Minimum - Failed
+
+```{python}
+min_img, min_thresh = apply_thresh(full_img, threshold_minimum, IMG_SHAPE)
+add_napari(min_img, name='min_img', w=w)
+```
+
+#### Mean - Failed
+
+
+гамма = 0,6
+
+```{python}
+mean_img, mean_thresh = apply_thresh(full_img_06, threshold_mean, IMG_SHAPE)
+add_napari(mean_img, name='mean_img', w=w)
+```
+
+#### Niblack - Failed
+
+
+гамма = 0.6
+
+```{python}
+nib_img, nib_thresh = apply_thresh(full_img_06, threshold_niblack, IMG_SHAPE)
+add_napari(nib_img, name='nib_img', w=w)
+```
+
+#### Sauvola - Failed
+
+
+гамма = 0.6
+
+```{python}
+sauv_img, sauv_thresh = apply_thresh(full_img_06, threshold_sauvola, IMG_SHAPE)
+add_napari(sauv_img, name='sauv_img', w=w)
+```
+
+#### Triangle - Close to Li
+
+
+гамма = 1
+
+```{python}
+tri_img, tri_thresh = apply_thresh(full_img, threshold_triangle, IMG_SHAPE)
+add_napari(tri_img, name='tri_img', w=w)
+```
+
+#### Adaptive - need newer version
+
+```{python}
+adapt_img, adapt_thresh = apply_thresh(full_img, threshold_adaptive, img.shape, block_size=3, sigma=1)
+add_napari(adapt_img, name='adapt_img', w=w)
+```
+
+**DEBUG_MODE_ON**
+
+```{python}
+w = show_napari(clean_img, name='li')
+add_napari(np.where(tri_img, stackz_sato, 0), name='tri', w=w)
+add_napari(stackz_sato, name='original', w=w)
+```
+
+```{python}
+np.save('original.npy', stackz_sato)
+np.save('li_filter.npy', np.where(li_img, stackz_sato, 0))
+np.save('tri_filter.npy', np.where(tri_img, stackz_sato, 0))
+```
+
+**DEBUG_MODE_OFF**
+
+
+ 
+
+```{python}
+correction_image = adjust_gamma(thresh_image, gamma=0.2).max(0)
+```
+
+```{python}
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+colors = ["black", "red"]
+cmap1 = LinearSegmentedColormap.from_list("mycmap", colors)
+```
+
+```{python}
+fig, ax = plt.subplots(ncols=4, nrows=3, figsize=(20,20))
+
+
+## Histogram
+ax[0][0].hist(gamma_image_06.ravel(), bins=256)
+ax[0][0].axvline(yen_thresh, color='r', label='Yen')
+ax[0][0].axvline(iso_thresh, color='b', label='Iso')
+ax[0][0].axvline(min_thresh, color='y', label='Min')
+ax[0][0].legend()
+ax[0][0].set_ylim(0, 10**5+500)
+
+## Yen
+ax[0][1].imshow(correction_image)
+ax[0][1].imshow((gamma_image_06>=yen_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][1].set_title('Yen')
+ax[0][1].axis('off')
+
+## Iso
+ax[0][2].imshow(correction_image)
+ax[0][2].imshow((gamma_image_06>=iso_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][2].set_title('Iso')
+ax[0][2].axis('off')
+
+## Min
+ax[0][3].imshow(correction_image)
+ax[0][3].imshow((gamma_image_06>=min_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][3].set_title('Min')
+ax[0][3].axis('off')
+
+
+## Histogram
+ax[1][0].hist(gamma_image_1.ravel(), bins=256)
+ax[1][0].axvline(li_thresh, color='darkorange', label='Li')
+ax[1][0].axvline(tri_thresh, color='m', label='Triangle')
+ax[1][0].axvline(mean_thresh, color='g', label='Mean')
+ax[1][0].legend()
+ax[1][0].set_ylim(0, 4*10**4)
+
+## Mean
+ax[1][1].imshow(correction_image)
+ax[1][1].imshow((gamma_image_1>=mean_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[1][1].set_title('Mean')
+ax[1][1].axis('off')
+
+## Li
+ax[1][2].imshow(correction_image)
+ax[1][2].imshow((gamma_image_1>=li_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[1][2].set_title('Li')
+ax[1][2].axis('off')
+
+## Triangle
+ax[1][3].imshow(correction_image)
+ax[1][3].imshow((gamma_image_1>=tri_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[1][3].set_title('Triangle')
+ax[1][3].axis('off')
+
+
+
+
+## Sauv
+ax[2][2].imshow(correction_image)
+ax[2][2].imshow((gamma_image_1>=sauv_thresh.reshape(IMG_SHAPE)).max(0), cmap=cmap1, alpha=0.5)
+ax[2][2].set_title('Sauv')
+ax[2][2].axis('off')
+
+## Niblack
+ax[2][0].imshow(correction_image)
+ax[2][0].imshow((gamma_image_1>=nib_thresh.reshape(IMG_SHAPE)).max(0), cmap=cmap1, alpha=0.5)
+ax[2][0].set_title('Niblack')
+ax[2][0].axis('off')
+
+## Local
+ax[2][1].imshow(correction_image)
+ax[2][1].imshow((gamma_image_1>=local_thresh.reshape(IMG_SHAPE)).max(0), cmap=cmap1, alpha=0.5)
+ax[2][1].set_title('Local')
+ax[2][1].axis('off')
+
+plt.show()
+```
+
+Лучше всего показывают себя Ли и среднее 
+
+
+### Удаление одиночных пикселей
+
+```{python}
+from skimage.morphology import remove_small_objects
+```
+
+```{python}
+clearest_img = remove_small_objects(gamma_image_1>=li_thresh, 5, connectivity=3)
+```
+
+```{python}
+final_image = np.where(clearest_img, li_img, 0)
+```
+
+```{python}
+show_napari(final_image, name='final')
+```
+
+### Определение нескольких астроцитов
+
+```{python}
+from skimage.measure import label, regionprops, regionprops_table
+```
+
+```{python}
+image = final_image > 0
+```
+
+```{python}
+label_im = label(image)
+regions = regionprops(label_im)
+```
+
+```{python}
+show_napari(label_im, name='label')
+```
+
+```{python}
+properties = ['area', 'bbox_area']
+df = pd.DataFrame(regionprops_table(label_im, final_image, 
+             properties=properties))
+maximum = df['area'].max()
+```
+
+```{python}
+df.sort_values('area').tail()
+```
+
+```{python}
+masks = []
+bbox = []
+list_of_index = []
+for num, x in enumerate(regions):
+    area = x.area
+    if area == maximum or area/maximum > 0.6:  
+        list_of_index.append(num)
+        bbox.append(regions[num].bbox)
+count = len(masks)
+```
+
+```{python}
+c = bbox[0]
+```
+
+```{python}
+show_napari(final_image[c[0]:c[3], c[1]:c[4], c[2]:c[5]], name='smth')
+```
+
+```{python}
+cropped_image = final_image[c[0]:c[3], c[1]:c[4], c[2]:c[5]]
+```
+
+## Общий анализ
+
+```{python}
+def clear_image(image):
+    thresh = threshold_li(image)
+    binary = image >= thresh
+    without_binary = remove_small_objects(binary, 3, connectivity=3)
+    filtered_image = np.where(without_binary, image, 0)
+    return filtered_image
+```
+
+```{python}
+def crop_image(image):
+    a = image.nonzero()
+    start = np.min(a[0])
+    end = np.max(a[0]+1)
+    start_in = np.min(a[1])
+    end_in = np.max(a[1]+1)
+    start_inn = np.min(a[2])
+    end_inn = np.max(a[2]+1)
+    return image[start:end, start_in:end_in, start_inn:end_inn]
+```
+
+```{python}
+def separate_images(image):
+    bin_image = image > 0
+    label_im = label(bin_image)
+    regions = regionprops(label_im)
+    
+    properties = ['area', 'bbox_area']
+    df = pd.DataFrame(regionprops_table(label_im, image, 
+                 properties=properties))
+    maximum = df['area'].max()
+
+    bbox = []
+    for num, x in enumerate(regions):
+        area = x.area
+        if area == maximum or area/maximum > 0.6:  
+            bbox.append(regions[num].bbox)
+      
+    images = []
+    for i, c in enumerate(bbox):
+        images.append((image[c[0]:c[3], c[1]:c[4], c[2]:c[5]], '_{}'.format(i)))
+    return images
+```
+
+## Principal Axes
+
+```{python}
+from numba import jit
+from pathlib import Path
+import itertools as itt
+
+```
+
+```{python}
+import ucats
+from imfun.filt import l1spline, l2spline
+```
+
+```{python}
+# %gui qt
+```
+
+```{python}
+style.use('seaborn-muted')
+rc("image",cmap='gray',aspect='equal',interpolation='nearest')
+rc("figure", figsize=(13,8))
+rc('axes', labelsize=16)
+```
+
+```{python}
+@jit
+def probabilistic_sample(data, weights, Npoints=-1):
+    sh = data.shape
+    Npoints = len(data) if Npoints < 0 else Npoints
+    done = False
+    i = 0
+    out = np.zeros((Npoints, sh[1]))
+    while i < Npoints:
+        for k in range(len(data)):
+            point = data[k]
+            if np.random.rand() < weights[k]:
+                out[i] = point
+                i+=1
+                if i >= Npoints:
+                    break
+    return out
+
+def percentile_rescale(arr, plow=1, phigh=99.5):
+    low, high = np.percentile(arr, (plow, phigh))
+    if low == high:
+        return np.zeros_like(arr)
+    else:
+        return np.clip((arr-low)/(high-low), 0, 1)
+```
+
+### Example
+
+```{python}
+zstack = cropped_image
+```
+
+```{python}
+# %time X = np.array(list(itt.product(*map(range, zstack.shape)))) # N-dimensional, but slower
+```
+
+```{python}
+X
+```
+
+```{python}
+gamma = 1
+weights = percentile_rescale(np.ravel(zstack)**gamma)
+weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
+```
+
+```{python}
+center = np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)
+center
+```
+
+```{python}
+Xc = X-center
+```
+
+ 
+
+```{python}
+multiplicity=3
+
+# %time Xp = probabilistic_sample(Xc, weights, multiplicity*len(X))
+# %time u,s,vh = np.linalg.svd(Xp,full_matrices=False)
+u,vh = ucats.decomposition.svd_flip_signs(u,vh, mode='u')
+s /= np.sqrt(len(u)-1) # normalize by number of points
+```
+
+```{python}
+vh
+```
+
+```{python}
+# x = array([[(0,0,0), vh[0]]])
+# x.shape
+```
+
+```{python}
+x = np.array([[center,vh[k]*2*s[k]] for k in range(3)])
+x
+```
+
+```{python}
+napari_scale = (0.38, 0.2, 0.2)
+```
+
+```{python}
+w = napari.view_image(zstack, ndisplay=3, scale=napari_scale)
+w.add_image(weights_s.reshape(zstack.shape), colormap='cyan',blending='additive',scale=napari_scale)
+w.add_vectors(x, edge_width=3, edge_color_cycle=['red','magenta', 'blue'],scale=napari_scale)
+```
+
+```{python}
+Y = Xc@vh.T#@np.diag(1/s)
+```
+
+```{python}
+zstack_r = np.ravel(zstack)
+```
+
+```{python}
+np.amin(zstack_r, where=zstack_r>0, initial=1)
+```
+
+```{python}
+plt.hist(zstack_r, bins=256)
+plt.ylim(0, 5000)
+plt.show()
+```
+
+```{python}
+Y.shape
+
+```
+
+```{python}
+zstack_r.shape
+```
+
+```{python}
+Yx1 = Y[:,0][zstack_r>0]
+Yx2 = Y[:,1][zstack_r>0]
+Yx3 = Y[:,2][zstack_r>0]
+Wx = zstack_r[zstack_r>0]
+```
+
+```{python}
+xq = arange(-150,250, 5)
+```
+
+```{python}
+figure()
+# plot(Y[:,0],np.ravel(zstack),'.', alpha=0.01)
+# hexbin(Y[:,0], zstack_r, mincnt=5, cmap='plasma', bins='log')
+plot(Yx1, Wx, '.', alpha=1, markersize=1.5)
+# xlim(-150, 150)
+ylim(np.amin(zstack_r, where=zstack_r>0, initial=1), 1)
+ylabel('brightness')
+xlabel('PC1 (px)')
+axvline(0, color='gray', ls='--')
+
+# plot(xq+2.5, yq2, lw=2)
+# plot(xq2, yq, lw=2)
+
+title('Brightness distribution along first principal axis')
+
+# gcf()
+```
+
+```{python}
+compactness(Yx1, Wx)
+```
+
+```{python}
+figure()
+# plot(Y[:,0],np.ravel(zstack),'.', alpha=0.01)
+# hexbin(Y[:,1], zstack_r, mincnt=5, cmap='plasma',bins='log')
+plot(Yx2, Wx, '.', alpha=1, markersize=1.5)
+xlim(-150,150)
+ylim(np.amin(zstack_r, where=zstack_r>0, initial=1), 1)
+ylabel('brightness')
+xlabel('PC2 (px)')
+axvline(0, color='gray',ls='--')
+title('Brightness distribution along second principal axis')
+```
+
+```{python}
+figure()
+# hexbin(Y[:,2], zstack_r, mincnt=5, cmap='plasma',bins='log')
+plot(Yx3, Wx, '.', markersize=1.5)
+xlim(-150,150)
+ylim(np.amin(zstack_r, where=zstack_r>0, initial=1), 1)
+ylabel('brightness')
+xlabel('PC3 (px)')
+axvline(0, color='gray',ls='--')
+title('Brightness distribution along third principal axis')
+```
+
+```{python}
+plt.hist(Yx1, bins=100)
+plt.show()
+```
+
+```{python}
+sns.boxplot(Yx1)
+```
+
+```{python}
+Yx1, Wx
+```
+
+```{python}
+Yx1[Wx < .5 + 10e-5][Wx[Wx < .5+10e-5] > .5-10e-5]
+```
+
+### Расчеты
+
+```{python}
+anisotropy = lambda s: s[0]/np.sum(s[:2])
+```
+
+```{python}
+asymmetry = lambda y: np.sum(y[y>0])/np.sum(y[y<0])
+```
+
+```{python}
+def compactness(Yx, Wx):
+    half_width = Yx[Wx < 0.5 + 10e-4][Wx[Wx < .5+10e-4] > .5-10e-4]
+    fwhm = half_width.max() - half_width.min()
+    width = Yx.max() - Yx.min()
+    return fwhm/width
+```
+
+```{python}
+def principal_axes(zstack):
+    X = np.array(list(itt.product(*map(range, zstack.shape)))) # N-dimensional, but slower
+    gamma = 1
+    weights = percentile_rescale(np.ravel(zstack)**gamma)
+    weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
+    center = np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)
+    Xc = X-center
+    
+    multiplicity=3
+
+    Xp = probabilistic_sample(Xc, weights, multiplicity*len(X))
+    u,s,vh = np.linalg.svd(Xp, full_matrices=False)
+    u,vh = ucats.decomposition.svd_flip_signs(u, vh, mode='u')
+    
+    Y = Xc@vh.T
+    vectors = np.array([[center,vh[k]*2*s[k]] for k in range(3)])
+    s /= np.sqrt(len(u)-1) # normalize by number of points
+    
+    zstack_r = np.ravel(zstack)
+    Yx1 = Y[:, 0][zstack_r > 0]
+    Wx = zstack_r[zstack_r > 0]
+    return anisotropy(s), asymmetry(Y), compactness(Yx1, Wx), center, vectors
+```
+
+```{python}
+
+```
+
+```{python}
+anis = np.load('anis.npy', allow_pickle=True).item()
+```
+
+```{python}
+anis = {}
+for i, name in enumerate(names):
+    print(i, name)
+    if i == 18:
+        continue
+    if name in anis.keys():
+        continue
+        
+#     if 'both' in name:
+#         continue
+    
+    stack, meta = ccdb.read_pic(name)
+    dims = ccdb.get_axes(meta)
+    if len(dims):
+        zoom = dims[0][0]/dims[-1][0]
+    else:
+        zoom = 4
+    image = ndi.zoom(stack.astype(float),(1, zoom,zoom))
+    image = hcecp.percentile_rescale(image)
+    zstack = clear_image(image)
+#     zstack = crop_image(zstack)
+    images = separate_images(zstack)
+    
+    for image, sub in images:
+        # %time anis['{}{}'.format(name, sub)] = list(principal_axes(image))
+        close('all')
+    
+    np.save('anis_sep', anis)        
+```
+
+```{python}
+anis['/home/incredible/Neuroscience/selected-for-complexity/data/1wk-ly14-grn-raw.pic']
+```
+
+### Soma segmentation, Center
+
+```{python}
+X = np.array(list(itt.product(*map(range, zstack.shape))))
+weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
+soma = weights_s.reshape(zstack.shape)
+center = np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)
+```
+
+```{python}
+a = soma.nonzero()
+start = np.min(a[0])
+end = np.max(a[0]+1)
+start_in = np.min(a[1])
+end_in = np.max(a[1]+1)
+start_inn = np.min(a[2])
+end_inn = np.max(a[2]+1)
+```
+
+```{python}
+crop_arr = soma[start:end, start_in:end_in, start_inn:end_inn]
+```
+
+```{python}
+a = zstack.nonzero()
+start = np.min(a[0])
+end = np.max(a[0]+1)
+start_in = np.min(a[1])
+end_in = np.max(a[1]+1)
+start_inn = np.min(a[2])
+end_inn = np.max(a[2]+1)
+```
+
+```{python}
+domain = zstack[start:end, start_in:end_in, start_inn:end_inn]
+```
+
+```{python}
+show_napari(domain, name='domain')
+```
+
+# Анализ полученных данных
+
+```{python}
+import os
+import pandas as pd
+import numpy as np
+import seaborn as sns
+from statannotations.Annotator import Annotator
+```
+
+```{python}
+anis = np.load('anis_sep.npy', allow_pickle=True).item()
+```
+
+```{python}
+data = pd.DataFrame.from_dict(anis, orient='index', columns=['anisotropy', 'asymmetry', 'compactness', 'center', 'vectors'])
+```
+
+```{python}
+data.reset_index(inplace=True)
+```
+
+```{python}
+def get_week(filename):
+    base_name = os.path.basename(filename)
+    week = base_name[0]
+    return week
+```
+
+```{python}
+data['week'] = data['index'].apply(get_week)
+data['index'] = data['index'].apply(os.path.basename)
+data['asymmetry'] = data['asymmetry'].apply(np.abs)
+```
+
+```{python}
+data_ly = data
+```
+
+```{python}
+# data_ly = data[data['index'].apply(lambda x: 'ly' in x)]
+```
+
+```{python}
+data_ly = data_ly.drop(12)
+```
+
+```{python}
+data_ly.loc[0:60]
+```
+
+```{python}
+x = 'week'
+y = 'anisotropy'
+```
+
+```{python}
+ax = sns.boxplot(data=data_ly, x=x, y=y, palette="Accent")
+sns.swarmplot(data=data_ly, x=x, y=y, color=".2")
+
+annotator = Annotator(ax, x=x, y=y, pairs=[("1", "3"), ("3", "4"), ("1", "4")], data=data_ly)
+annotator.configure(test='Kruskal', text_format='star', loc='outside')
+annotator.apply_and_annotate()
+sns.despine(left=True)
+```
+
+```{python}
+y = 'asymmetry'
+```
+
+```{python}
+ax = sns.boxplot(data=data_ly, x=x, y=y, palette="Accent")
+sns.swarmplot(data=data_ly, x=x, y=y, color=".2")
+
+annotator = Annotator(ax, x=x, y=y, pairs=[("1", "3"), ("3", "4"), ("1", "4")], data=data_ly)
+annotator.configure(test='Kruskal', text_format='star', loc='outside')
+annotator.apply_and_annotate()
+sns.despine(left=True)
+```
+
+```{python}
+y = 'compactness'
+```
+
+```{python}
+ax = sns.boxplot(data=data_ly, x=x, y=y, palette="Accent")
+sns.swarmplot(data=data_ly, x=x, y=y, color=".2")
+annotator = Annotator(ax, x=x, y=y, pairs=[("1", "3"), ("3", "4"), ("1", "4")], data=data_ly)
+annotator.configure(test='Kruskal', text_format='star', loc='outside')
+annotator.apply_and_annotate()
+sns.despine(left=True)
+```
+
+```{python}
+
+```
+
+# Статистика
+
+```{python}
+from scipy.stats import kruskal
+```
+
+```{python}
+data_1 = data_ly.query('week == 1')['anisotropy']
+data_3 = data_ly.query('week == 3')['anisotropy']
+data_4 = data_ly.query('week == 4')['anisotropy']
+```
+
+```{python}
+kruskal(data_1, data_3, data_4)
+```
+
+```{python}
+kruskal(data_1, data_3)
+```
+
+```{python}
+kruskal(data_1, data_4)
+```
+
+```{python}
+kruskal(data_3, data_4)
+```
+
+```{python}
+
+```
+
+```{python}
+data_1 = data_ly.query('week == "1"')
+data_3 = data_ly.query('week == "3"')
+data_4 = data_ly.query('week == "4"')
+```
+
+```{python}
+data_3
+```
+
+```{python}
+kruskal(data_1, data_3, data_4)
+```
+
+```{python}
+kruskal(data_1, data_3)
+```
+
+```{python}
+kruskal(data_1, data_4)
+```
+
+```{python}
+kruskal(data_3, data_4)
+```
+
+```{python}
+data_1 = data_ly.query('week == 1')['compactness']
+data_3 = data_ly.query('week == 3')['compactness']
+data_4 = data_ly.query('week == 4')['compactness']
+```
+
+```{python}
+kruskal(data_1, data_3, data_4)
+```
+
+```{python}
+kruskal(data_1, data_3)
+```
+
+```{python}
+kruskal(data_1, data_4)
+```
+
+```{python}
+kruskal(data_3, data_4)
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
