@@ -468,7 +468,22 @@ napari.run()
 ```
 
 ```{python}
-vectors.shape
+from importlib import reload
+```
+
+```{python}
+import hessian_vectors as hv
+```
+
+```{python}
+reload(hv)
+```
+
+```{python}
+# vectors, length = hv.parse_sato(sato, Vf)
+viewer = napari.view_image(img_noisy)
+hv.add_hessian_vectors(viewer, sato, Vf, parser=hv.parse_sato, axis=0)
+napari.run()
 ```
 
 ```{python}

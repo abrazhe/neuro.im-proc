@@ -1,13 +1,19 @@
 import numpy as np
 
+import hessian_cecp as hcecp
 
-def add_hessian_vectors(viewer, vectors, lengths, axis=0, index=1):
-    Vfx = vectors[..., axis][..., ::-1]
 
-    V = Vfx[...,0] # row directions (Y)
-    U = Vfx[...,1] # col directions (X)
-    C = Vfx[...,2]
+def sato_vectors_convertor(data, vectors, axis=0):
+    lengths = hcecp.percentile_rescale(data)**0.5
+    Vf = vectors[..., axis][..., ::-1]
 
+    V = Vf[...,0]
+    U = Vf[...,1]
+    C = Vf[...,2]
+    return V, U, C, lengths
+
+
+def add_hessian_vectors(viewer, V, U, C, lengths, index=1):
     nr, nc, nd = (1, U.shape[0]) if U.ndim == 1 else U.shape
     indexgrid = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nd))
     x, y, z = [np.ravel(a)[::index] for a in indexgrid]
