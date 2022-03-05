@@ -35,7 +35,6 @@ import sys
 ```
 
 ```{python}
-import ccdb
 import napari
 
 from tqdm.auto import tqdm
@@ -99,13 +98,7 @@ ax.set_aspect('equal')
 plt.show()
 ```
 
-```{python}
-u, v = 
-```
-
-```{python}
-napari.view_vectors()
-```
+## Построение векторов в napari
 
 ```{python}
 # sample vector coord-like data
@@ -158,11 +151,10 @@ vectors = np.concatenate((planes, pos), axis=2)
 
 
 napari.view_vectors(vectors, edge_width=0.4, name='sliced vectors', edge_color='blue')
+layer.dims.ndisplay = 3
+
 napari.run()
 ```
-
-## Построение векторов в napari
-
 
 Добавим границы по сетке чтобы был фон  были видны границы изображения в целом
 
@@ -187,10 +179,6 @@ rect2[3] = [0, 0, 1]
 ```
 
 ```{python}
-
-```
-
-```{python}
 viewer = napari.view_shapes(rect, face_color='white',
                             edge_width=0,
                             name='bounding box')
@@ -208,11 +196,6 @@ arr[0] = [[0, 0, 0], [1, 1, 1]]
 arr[1] = [[0, 0, 0], [1, 0, 0]]
 arr[2] = [[0, 0, 0], [0, 0, 1]]
 viewer.add_vectors(arr, edge_width=0.2, name='sliced vectors', edge_color='blue')
-
-```
-
-```{python}
-
 ```
 
 ## Тестовая картинка
@@ -222,7 +205,7 @@ viewer.add_vectors(arr, edge_width=0.2, name='sliced vectors', edge_color='blue'
 
 ```{python}
 img_lines = np.zeros((100,100))
-img_lines[::10] = 1
+img_lines[2::10] = 1
 # img_lines[23:78,50:52] = 1
 # img_lines = ndi.rotate(img_lines, 24)
 img_lines = img_lines[20:-20,20:-20]
@@ -291,54 +274,15 @@ img_noisy = SNR*img + randn(*img.shape)
 
 ## Вектора Матрицы Гессе
 
-```{python}
-def threshold_obj_size(mask, min_size=3):
-    out = np.zeros(mask.shape, np.bool)
-    labels, nl = ndi.label(mask)
-    objs = ndi.find_objects(labels)
-    for i,o in enumerate(objs):
-        submask = labels[o]==i+1
-        sz = np.sum(submask)
-        if sz >= min_size:
-            out[o][submask] = True
-    return out
 
-def sato2d_ms(img, scales):
-    return np.max([hcecp.sato2d(img, scale)*scale**2 for scale in scales], axis=0)
-
-import ucats
-def noise_assisted_sato(img, sigmas, noise_sigma=None, threshold=0.1, niters=100, noise_scaling=1):
-    out = np.zeros_like(img)
-    if noise_sigma is None:
-        noise_sigma = ucats.mad_std(img)
-        print('estimated noise sigma:', noise_sigma)
-    for i in tqdm(range(niters)):
-        img_n = img + randn(*img.shape)*noise_sigma*noise_scaling
-        #img_n = ucats.scramble.local_jitter2d(img,1,1)
-        #sx = skfilters.sato(img_n, sigmas, black_ridges=False, mode='constant')
-        #sx = np.max([sato2d(img, s)*s**2 for s in sigmas], axis=0)
-        sx = sato2d_ms(img_n, sigmas)
-        out += threshold_obj_size(sx > threshold)
-        #out += sx > threshold
-        #out += sx
-    return out/niters
-```
+Только для двумерных изображений
 
 ```{python}
-scales = [0.5, 0.75,  1, 1.5,  2, 3, 4, 6, 8, 12, 16]
-```
-
-```{python}
-sato = np.max(sato_scales,0)
-sigma = 3
+sigma = 1
 ```
 
 ```{python}
 sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-```
-
-```{python}
-# imgx_sato =np.max(sato_scales, 0)
 ```
 
 ```{python}
@@ -398,6 +342,76 @@ plt.tight_layout()
 - Длины: weights -> length
 - Конечные позиции: x1, y1
 
+
+### 2D изображение
+
+```{python}
+sigma = 1
+```
+
+```{python}
+sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+```
+
+```{python}
+weights = hcecp.percentile_rescale(sato)**0.5
+
+i = 0
+Vfx = Vf[...,i][...,::-1]
+
+V = Vfx[...,0] # row directions (Y)
+U = Vfx[...,1] # col directions (X)
+```
+
+```{python}
+nr, nc = (1, U.shape[0]) if U.ndim == 1 else U.shape
+indexgrid = np.meshgrid(np.arange(nc), np.arange(nr))
+x, y = [np.ravel(a) for a in indexgrid]
+```
+
+```{python}
+u = U.ravel()
+v = V.ravel()
+length = weights.ravel()
+```
+
+Каждый вектор получая начальную точку начинает считать от неё. Поэтому для определения конца вектора достаточно указать его относительно самого вектора
+
+```{python}
+x1, y1 = u*length, v*length
+```
+
+Вектора отображаются транспонировано. Хз почему. Поэтому меняем местами х и у
+
+```{python}
+vectors = np.zeros((u.shape[0], 2, 2))
+vectors[...,0, 0] = y
+vectors[...,0, 1] = x
+vectors[...,1, 0] = y1
+vectors[...,1, 1] = x1
+```
+
+```{python}
+list(napari.utils.colormaps.AVAILABLE_COLORMAPS)
+```
+
+```{python}
+length.shape
+```
+
+```{python}
+viewer = napari.view_image(img_noisy)
+
+properties = {'length': length}
+
+viewer.add_vectors(vectors, edge_width=0.2, 
+                   length=1,  properties=properties,
+                   edge_color='length', edge_colormap='inferno')
+napari.run()
+```
+
+### 3D изображение
+
 ```{python}
 sigma = 1
 ```
@@ -430,13 +444,9 @@ c = C.ravel()
 length = weights.ravel()
 ```
 
-Каждый вектор получая начальную точку начинает считать от неё. Поэтому для определения конца вектора достаточно указать его относительно самого вектора
-
 ```{python}
 x1, y1, z1 = u*length, v*length, c*length
 ```
-
-Вектора отображаются транспонировано. Хз почему. Поэтому меняем местами х и у
 
 ```{python}
 vectors = np.zeros((u.shape[0], 2, 3))
@@ -446,14 +456,6 @@ vectors[...,0, 2] = z
 vectors[...,1, 0] = y1
 vectors[...,1, 1] = x1
 vectors[...,1, 2] = z1
-```
-
-```{python}
-list(napari.utils.colormaps.AVAILABLE_COLORMAPS)
-```
-
-```{python}
-length.shape
 ```
 
 ```{python}
@@ -467,60 +469,22 @@ viewer.add_vectors(vectors, edge_width=0.1,
 napari.run()
 ```
 
-```{python}
-from importlib import reload
-```
+### С помощью написанной функции (для всех изображений)
 
 ```{python}
 import hessian_vectors as hv
 ```
 
 ```{python}
-reload(hv)
+sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
-# vectors, length = hv.parse_sato(sato, Vf)
+sato, Vf = hcecp.sato3d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+```
+
+```{python}
 viewer = napari.view_image(img_noisy)
-hv.add_hessian_vectors(viewer, sato, Vf, parser=hv.parse_sato, axis=0)
+hv.plot_from_sato(viewer, sato, Vf)
 napari.run()
-```
-
-```{python}
-def add_hessian_vectors(viewer, vectors, lengths, axis=0):
-    Vfx = vectors[..., axis][..., ::-1]
-
-    V = Vfx[...,0] # row directions (Y)
-    U = Vfx[...,1] # col directions (X)
-    C = Vfx[...,2]
-    
-    nr, nc, nd = (1, U.shape[0]) if U.ndim == 1 else U.shape
-    indexgrid = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nd))
-    x, y, z = [np.ravel(a) for a in indexgrid]
-    
-    u = U.ravel()
-    v = V.ravel()
-    c = C.ravel()
-    length = lenghts.ravel()
-    
-    x1, y1, z1 = u*length, v*length, c*length
-    
-    vectors = np.zeros((u.shape[0], 2, 3))
-    vectors[...,0, 0] = y
-    vectors[...,0, 1] = x
-    vectors[...,0, 2] = z
-    vectors[...,1, 0] = y1
-    vectors[...,1, 1] = x1
-    vectors[...,1, 2] = z1
-    
-    properties = {'length': length}
-
-    viewer.add_vectors(vectors, edge_width=0.1, 
-                       length=1,  properties=properties,
-                       edge_color='length', edge_colormap='inferno')
-    return viewer
-```
-
-```{python}
-
 ```
