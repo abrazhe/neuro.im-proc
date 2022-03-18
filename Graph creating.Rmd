@@ -1,0 +1,462 @@
+---
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.13.6
+  kernelspec:
+    display_name: venv
+    language: python
+    name: venv
+---
+
+```{python}
+import os
+import sys
+```
+
+```{python}
+# %matplotlib inline
+
+from matplotlib import rc
+import matplotlib.pyplot as plt 
+from matplotlib.pyplot import imshow, quiver
+```
+
+```{python}
+import scipy
+from scipy import ndimage as ndi
+import networkx as nx
+```
+
+```{python}
+import numpy as np
+from numpy.random import randn
+```
+
+```{python}
+import hessian_cecp as hcecp
+```
+
+# Тестовая картинка
+
+
+Линии
+
+```{python}
+img_lines = np.zeros((100,100))
+img_lines[2::10] = 1
+img_lines[3::10] = 1
+img_lines = img_lines[20:-20,20:-20]
+
+img_lines = np.clip(img_lines, 0, 1)
+crop = (slice(20,-20), slice(20,-20))
+img = img_lines
+imshow(img, cmap='gray')
+```
+
+```{python}
+SNR = 5
+img_noisy = SNR*img + randn(*img.shape)
+imshow(img_noisy, cmap='gray')
+```
+
+Сетка
+
+```{python}
+img_lines = np.zeros((100,100))
+img_lines[2::20] = 1
+img_lines[3::20] = 1
+img_lines = ndi.rotate(img_lines, 45)
+
+img_lines[..., 2::20] = 1
+img_lines[..., 3::20] = 1
+
+img_lines = img_lines[20:-20,20:-20]
+
+img_lines = np.clip(img_lines, 0, 1)
+crop = (slice(20,-20), slice(20,-20))
+img = img_lines[crop]
+imshow(img, cmap='gray')
+```
+
+```{python}
+SNR = 3
+img_noisy = SNR*img + randn(*img.shape)
+imshow(img_noisy, cmap='gray')
+```
+
+Повернутый крест
+
+```{python}
+img_cross = np.zeros((100,100))
+img_cross[50:52, 23:78] = 1
+img_cross[23:78,50:52] = 1
+img_cross = ndi.rotate(img_cross, 24)
+img_cross = img_cross[20:-20,20:-20]
+
+img_cross = np.clip(img_cross, 0, 1)
+crop = (slice(20,-20), slice(20,-20))
+img = img_cross[crop]
+imshow(img, cmap='gray', interpolation='nearest')
+```
+
+```{python}
+SNR = 5
+img_noisy = SNR*img + randn(*img.shape)
+imshow(img_noisy, cmap='gray',interpolation='nearest')
+```
+
+Спираль
+
+```{python}
+from PIL import Image
+
+pic = Image.open("/home/incredible/Neuroscience/Code/data/test_images/spiral.png").convert('L')
+img = np.clip(np.asarray(pic), 0, 1)
+imshow(img, cmap='gray')
+```
+
+```{python}
+SNR = 5
+img_noisy = img*SNR + randn(*img.shape)
+imshow(img_noisy, cmap='gray')
+```
+
+Астроцит (типа)
+
+```{python}
+from PIL import Image
+
+pic = Image.open("/home/incredible/Neuroscience/Code/data/test_images/astro.png").convert('L')
+img = np.clip(np.asarray(pic), 0, 1)
+imshow(img, cmap='gray')
+```
+
+```{python}
+SNR = 5
+img_noisy = img*SNR + randn(*img.shape)
+imshow(img_noisy, cmap='gray')
+```
+
+Астроцит (реальный)
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+## Фильтрация изображения
+
+```{python}
+from skimage.filters import threshold_li
+from skimage.morphology import remove_small_objects
+```
+
+```{python}
+li = threshold_li(img_noisy)
+```
+
+```{python}
+clear_img = np.where(img_noisy > li, img_noisy, 0)
+clearest_img = remove_small_objects(img_noisy >= li, 5, connectivity=3)
+final_image = np.where(clearest_img, clear_img, 0)
+```
+
+```{python}
+imshow(final_image, cmap='gray')
+```
+
+# Вектора Гессе
+
+```{python}
+sigma = 2
+```
+
+```{python}
+sato, Vf = hcecp.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+```
+
+```{python}
+plt.figure(figsize=(11,9))
+imshow(final_image, cmap='gray', origin='lower')
+
+weights = hcecp.percentile_rescale(sato)**0.5
+
+i = 0
+Vfx = Vf[...,i][...,::-1]
+
+V = Vfx[...,0] # row directions (Y)
+U = Vfx[...,1] # col directions (X)
+plt.setp(plt.gca(), xticks=[], yticks=[])
+h = quiver(U*weights, V*weights, weights, scale=25, cmap='inferno')
+plt.colorbar(h, ax=plt.gca())
+plt.tight_layout()
+```
+
+# Построение графа ветвей
+
+
+В качестве веса ребер будем брать косинусное расстояние между ними
+
+
+x, y, vectors, weights, img_noisy
+
+```{python}
+lengths = hcecp.percentile_rescale(sato)**0.5
+```
+
+```{python}
+vectors = np.stack((U*lengths, V*lengths), axis=2)
+```
+
+```{python}
+nr, nc = (1, U.shape[0]) if U.ndim == 1 else U.shape
+x, y = np.meshgrid(np.arange(nc), np.arange(nr))
+```
+
+```{python}
+def weight_of(a, b):
+    try:
+        cos_dist = scipy.spatial.distance.cosine(a, b)
+    except:
+        cos_dist = 0
+    return np.abs(1 - cos_dist) * np.mean([np.linalg.norm(a), np.linalg.norm(b)])
+```
+
+```{python}
+k_h, k_w = 3, 3
+```
+
+```{python}
+G = nx.Graph()
+nodes = {}
+```
+
+```{python}
+for row in range(vectors.shape[0]):
+    for col in range(vectors.shape[1]):
+        cur = (row, col)
+        cur_node = (x[cur], y[cur])
+        nodes[cur_node] = cur_node
+        G.add_node(cur_node, size=final_image[cur])
+        for i in range(k_w):
+            for j in range(k_h):
+                pos = (np.clip(row + i - k_w//2, 0, U.shape[0] - 1), np.clip(col + j - k_h//2, 0, U.shape[1] - 1)) 
+                pos_node = (x[pos], y[pos])
+                if G.has_edge(cur_node, pos) or cur_node == pos_node:
+                    continue
+                weight = weight_of(vectors[cur], vectors[pos])
+                nodes[pos_node] = pos_node
+                G.add_edge(cur_node, pos_node, weight=weight)
+                
+```
+
+Считаем, что точки находятся на одной линии если угол между ними не превышает 45 градусов, т.е. значение весов >= 0.7
+
+```{python}
+# # %matplotlib notebook
+plt.figure(figsize=(60, 60))
+width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
+width = np.where(width < 0.3, np.zeros(width.shape), width)
+nx.draw_networkx_edges(G, nodes, width=width*5)
+# imshow(clean_img, cmap='gray', origin='lower')
+```
+
+```{python}
+plt.figure(figsize=(10, 10))
+# plt.scatter(np.arange(0, width.shape[0]), width)
+plt.hist(width, bins=199)
+plt.ylim((0, 250))
+plt.show()
+```
+
+```{python}
+from skimage.filters import threshold_li, threshold_otsu
+```
+
+```{python}
+otsu, li = threshold_otsu(width), threshold_li(width)
+```
+
+```{python}
+otsu, li
+```
+
+# Построение графа узлов
+
+
+В отличие от предыдущего пункта определяем узлы как места со слабыми связями рядом с сильными. Вес считается как косинусное растояние без учитывания длин векторов. (Можно откомментировать и будет как в пункте выше)
+
+Слабыми считаются связи у которых вес ~0; т е угол между соседними векторами порядка 90
+
+```{python}
+def weight_of(a, b):
+    try:
+        cos_dist = scipy.spatial.distance.cosine(a, b)
+    except:
+        cos_dist = 0
+    return np.abs(1 - cos_dist) #* np.mean([np.linalg.norm(a), np.linalg.norm(b)])
+```
+
+```{python}
+Gn = nx.Graph()
+nodes_n = {}
+weights = []
+```
+
+```{python}
+for row in range(vectors.shape[0]):
+    for col in range(vectors.shape[1]):
+        cur = (row, col)
+        cur_node = (x[cur], y[cur])
+        nodes[cur_node] = cur_node
+        Gn.add_node(cur_node, size=final_image[cur])
+        for i in range(k_w):
+            for j in range(k_h):
+                pos = (np.clip(row + i - k_w//2, 0, U.shape[0] - 1), np.clip(col + j - k_h//2, 0, U.shape[1] - 1)) 
+                pos_node = (x[pos], y[pos])
+                if Gn.has_edge(cur_node, pos) or cur_node == pos_node:
+                    continue
+                weight = weight_of(vectors[cur], vectors[pos])
+                weights.append(weight)
+                nodes[pos_node] = pos_node
+                Gn.add_edge(cur_node, pos_node, weight=weight)
+                
+```
+
+```{python}
+# # %matplotlib notebook
+plt.figure(figsize=(60, 60))
+width = 1 - np.array([edgedata["weight"] for _, _, edgedata in Gn.edges(data=True)])
+# width = np.where(width > -0.1, np.zeros(width.shape), width)
+nx.draw_networkx_edges(Gn, nodes, width=width*5)
+# imshow(clean_img, cmap='gray', origin='lower')
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+## Скелетонизация
+
+
+Определение Сомы и её границ
+
+Определение узлов/пересечений 
+
+Определение центральной линии отростков последовательным перемещением по границе сомы и выделением самых ярких участков. Перемещение по вектору и снова поиск.
+
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```

@@ -19,7 +19,7 @@ jupyter:
 Подключение библиотек
 
 ```{python}
-# %pylab inline
+# %matplotlib inline
 ```
 
 ```{python}
@@ -28,10 +28,16 @@ import sys
 import ccdb
 import napari
 
+import matplotlib.pyplot as plt
+
 from importlib import reload
 
 from tqdm.auto import tqdm
 from scipy import ndimage as ndi
+```
+
+```{python}
+from numpy.random import randint
 ```
 
 ```{python}
@@ -47,15 +53,15 @@ from astromorpho import enh, morpho
 ```{python}
 sys.path.append('/home/incredible/Neuroscience/lib')
 
-import elliptic_fourie as elfr
+# import elliptic_fourie as elfr
 ```
 
 Настройка глобальных пременных для графиков
 
 ```{python}
-rc('image', aspect='equal', interpolation='nearest',cmap='gray')
-rc('figure', figsize=(10,10))
-rc('axes', grid=True, labelsize=16)
+plt.rc('image', aspect='equal', interpolation='nearest',cmap='gray')
+plt.rc('figure', figsize=(10,10))
+plt.rc('axes', grid=True, labelsize=16)
 ```
 
 ```{python}
@@ -70,8 +76,8 @@ def add_napari(img, w, name):
 
 Путь к изображениям
 
-```{python}
-data_path = '/home/incredible/Neuroscience/selected-for-complexity/data'
+```{python tags=c("parameters")}
+data_path = '/home/incredible/Neuroscience/Code/data'
 ```
 
 ```{python}
@@ -79,16 +85,18 @@ data_path = '/home/incredible/Neuroscience/selected-for-complexity/data'
 names = [name for name in names if not 'hm' in name or not 'red' in name]
 ```
 
+Эта картинка не открывается автоматически, поэтому исключаем её
+
 ```{python}
-names.pop(names.index('/home/incredible/Neuroscience/selected-for-complexity/data/4wk-both5-red-raw.pic'))
+names.pop(names.index('/home/incredible/Neuroscience/Code/data/4wk-both5-red-raw.pic'))
 ```
 
 ## Выбираем рандомную картинку
 
 ```{python}
 k = randint(len(names))
-k = 0
-k = names.index('/home/incredible/Neuroscience/selected-for-complexity/data/3wk-ly1-raw.pic')
+# k = 0
+# k = names.index('/home/incredible/Neuroscience/Code/data/3wk-ly1-raw.pic')
 print(k, names[k])
 stack, meta = ccdb.read_pic(names[k])
 # stack, meta = ccdb.read_pic('/home/incredible/Neuroscience/selected-for-complexity/data/1wk-both8-red-raw.pic')
@@ -113,28 +121,15 @@ stack.shape, stackz.shape
 ```
 
 ```{python}
-imshow(stackz.max(0))
+plt.imshow(stackz.max(0))
 ```
 
 ```{python}
-w = napari.view_image(stackz, ndisplay=3, rendering='attenuated_mip', gamma=0.6)
+# w = napari.view_image(stackz, ndisplay=3, rendering='attenuated_mip', gamma=0.6)
 ```
 
-###  Предобработка изображений
-
-
-Применяем фильтр Сато для обнаружения волокон
-
 ```{python}
-# %time data_sato, Vf = hcecp.sato3d(stackz, 1, return_vectors=True)
-show_napari(data_sato, name='data_sato')
-```
 
-Сглаживание?
-
-```{python}
-# %time stackz_sato = hcecp.percentile_rescale(data_sato)
-show_napari(stackz_sato, name='stackz_sato')
 ```
 
 ### Threshold
@@ -168,12 +163,11 @@ gamma_image_1 = adjust_gamma(thresh_image, gamma=1)
 ```
 
 ```{python}
-w = show_napari(gamma_image_1, name='start_img_gamma_1')
+# w = show_napari(gamma_image_1, name='start_img_gamma_1')
 ```
 
 ```{python}
 IMG_SHAPE = thresh_image.shape
-
 ```
 
 ```{python}
@@ -219,7 +213,7 @@ add_napari(iso_img, name='iso_img', w=w)
 
 ```{python}
 li_img, li_thresh = apply_thresh(full_img, threshold_li, IMG_SHAPE)
-add_napari(li_img, name='li_img', w=w)
+# add_napari(li_img, name='li_img', w=w)
 ```
 
 #### Local - Failed
@@ -414,13 +408,14 @@ final_image = np.where(clearest_img, li_img, 0)
 ```
 
 ```{python}
-show_napari(final_image, name='final')
+# show_napari(final_image, name='final')
 ```
 
 ### Определение нескольких астроцитов
 
 ```{python}
 from skimage.measure import label, regionprops, regionprops_table
+import pandas as pd
 ```
 
 ```{python}
@@ -433,7 +428,7 @@ regions = regionprops(label_im)
 ```
 
 ```{python}
-show_napari(label_im, name='label')
+# show_napari(label_im, name='label')
 ```
 
 ```{python}
@@ -464,7 +459,7 @@ c = bbox[0]
 ```
 
 ```{python}
-show_napari(final_image[c[0]:c[3], c[1]:c[4], c[2]:c[5]], name='smth')
+# show_napari(final_image[c[0]:c[3], c[1]:c[4], c[2]:c[5]], name='smth')
 ```
 
 ```{python}
@@ -515,6 +510,79 @@ def separate_images(image):
     for i, c in enumerate(bbox):
         images.append((image[c[0]:c[3], c[1]:c[4], c[2]:c[5]], '_{}'.format(i)))
     return images
+```
+
+## Hessian vectors
+
+```{python}
+import numpy as np
+```
+
+```{python}
+def add_hessian_vectors(viewer, vectors, lengths, axis=0, index=1):
+    Vfx = vectors[..., axis][..., ::-1]
+
+    V = Vfx[...,0] # row directions (Y)
+    U = Vfx[...,1] # col directions (X)
+    C = Vfx[...,2]
+
+    nr, nc, nd = (1, U.shape[0]) if U.ndim == 1 else U.shape
+    indexgrid = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nd))
+    x, y, z = [np.ravel(a)[::index] for a in indexgrid]
+
+    u = U.ravel()[::index]
+    v = V.ravel()[::index]
+    c = C.ravel()[::index]
+    length = lengths.ravel()[::index]
+
+    x1, y1, z1 = u*length, v*length, c*length
+
+    vectors = np.zeros((u.shape[0], 2, 3))
+    vectors[...,0, 0] = y
+    vectors[...,0, 1] = x
+    vectors[...,0, 2] = z
+    vectors[...,1, 0] = y1
+    vectors[...,1, 1] = x1
+    vectors[...,1, 2] = z1
+
+    properties = {'length': length}
+
+    viewer.add_vectors(vectors, edge_width=0.1,
+                       length=1,  properties=properties,
+                       edge_color='length', edge_colormap='inferno')
+    return viewer
+
+```
+
+Применяем фильтр Сато для обнаружения волокон
+
+```{python}
+# %time data_sato, Vf = hcecp.sato3d(cropped_image, 1, return_vectors=True)
+# show_napari(data_sato, name='data_sato')
+```
+
+```{python}
+Vf.shape
+```
+
+###  Предобработка изображений
+
+
+Сглаживание?
+
+```{python}
+# %time stackz_sato = hcecp.percentile_rescale(data_sato)
+# show_napari(stackz_sato, name='stackz_sato')
+```
+
+```{python}
+weights = stackz_sato**0.5
+```
+
+```{python}
+viewer = napari.view_image(cropped_image)
+add_hessian_vectors(viewer, Vf, weights, index=5)
+napari.run()
 ```
 
 ## Principal Axes
