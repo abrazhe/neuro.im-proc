@@ -1,11 +1,12 @@
 ---
 jupyter:
   jupytext:
+    formats: ipynb,Rmd
     text_representation:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.6
+      jupytext_version: 1.13.7
   kernelspec:
     display_name: venv
     language: python
@@ -37,7 +38,7 @@ from numpy.random import randn
 ```
 
 ```{python}
-import hessian_cecp as hcecp
+import astromorpho as astro
 ```
 
 # Тестовая картинка
@@ -179,14 +180,14 @@ sigma = 2
 ```
 
 ```{python}
-sato, Vf = hcecp.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
 plt.figure(figsize=(11,9))
 imshow(final_image, cmap='gray', origin='lower')
 
-weights = hcecp.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5
 
 i = 0
 Vfx = Vf[...,i][...,::-1]
@@ -252,6 +253,8 @@ for row in range(vectors.shape[0]):
                 if G.has_edge(cur_node, pos) or cur_node == pos_node:
                     continue
                 weight = weight_of(vectors[cur], vectors[pos])
+                if weight < 10e-3:
+                    continue
                 nodes[pos_node] = pos_node
                 G.add_edge(cur_node, pos_node, weight=weight)
                 
@@ -264,8 +267,13 @@ for row in range(vectors.shape[0]):
 plt.figure(figsize=(60, 60))
 width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
 width = np.where(width < 0.3, np.zeros(width.shape), width)
-nx.draw_networkx_edges(G, nodes, width=width*5)
+edges = nx.draw_networkx_edges(G, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+# plt.colorbar(edges)
 # imshow(clean_img, cmap='gray', origin='lower')
+```
+
+```{python}
+[edgedata["weight"] for _, _, edgedata in G.edges(data=True)]
 ```
 
 ```{python}
@@ -282,10 +290,6 @@ from skimage.filters import threshold_li, threshold_otsu
 
 ```{python}
 otsu, li = threshold_otsu(width), threshold_li(width)
-```
-
-```{python}
-otsu, li
 ```
 
 # Построение графа узлов
