@@ -1,5 +1,4 @@
 h5py
-hdbscan
 jupyter
 jupytext
 matplotlib
@@ -7,12 +6,16 @@ numba
 numpy==1.21.3
 opencv-python
 pandas
+pathos
 Pillow
-PyQt==5.14.2
-scikit-image==0.17.2
+python-dev-tools
 scikit-learn
 scipy
 swan
 tifffile
 tqdm
 umap-learn
+
+hdbscan
+PyQt5==5.14.2
+scikit-image

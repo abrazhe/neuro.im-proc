@@ -1,6 +1,7 @@
 Необходимые библиотеки:
 
 h5py
+python-dev-tools
 hdbscan
 jupyter
 jupytext
@@ -9,9 +10,10 @@ numba
 numpy==1.21.3
 opencv-python
 pandas
+pathos
 Pillow
-PyQt==5.14.2
-scikit-image==0.17.2
+PyQt5==5.14.2
+scikit-image
 scikit-learn
 scipy
 swan
@@ -36,7 +38,7 @@ pip install "napari[all]"
 
 Image-funcut
 
-https://github.com/abrazhe/image-funcut/tree/develop
+https://github.com/abrazhe/image-funcut
 Используем ветку !develop!
 В ридми указаны способы установки, но на всякий случай добавлю свой.
 - Клонируем репозиторий на свой компьютер
