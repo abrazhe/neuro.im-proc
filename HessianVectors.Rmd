@@ -1,11 +1,12 @@
 ---
 jupyter:
   jupytext:
+    formats: ipynb,Rmd
     text_representation:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.6
+      jupytext_version: 1.13.7
   kernelspec:
     display_name: venv
     language: python
@@ -26,7 +27,7 @@ from numpy.random import randn
 ```
 
 ```{python}
-import hessian_cecp as hcecp
+import astromorpho as astro
 ```
 
 ```{python}
@@ -282,7 +283,7 @@ sigma = 1
 ```
 
 ```{python}
-sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
@@ -292,7 +293,7 @@ imshow(img_noisy,cmap='gray', origin='lower')
 #lamc = lam[crop]
 #mask = (lam[...,0] < 0) & ((lam[...,1] <= 0) | (lam[...,1] < np.abs(lam[...,0])/0.5))
 #weights = percentile_rescale(np.abs(lam[...,0]))*mask
-weights = hcecp.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5
 #weights = skimage.filters.sato(imgx,[sigma],black_ridges=False)[crop]
 
 
@@ -317,7 +318,7 @@ imshow(img_noisy, cmap='gray', origin='lower')
 #lamc = lam[crop]
 #mask = (lam[...,0] < 0) & ((lam[...,1] <= 0) | (lam[...,1] < np.abs(lam[...,0])/0.5))
 #weights = percentile_rescale(np.abs(lam[...,0]))*mask
-weights = hcecp.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5
 #weights = skimage.filters.sato(imgx,[sigma],black_ridges=False)[crop]
 
 
@@ -350,11 +351,11 @@ sigma = 1
 ```
 
 ```{python}
-sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
-weights = hcecp.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5
 
 i = 0
 Vfx = Vf[...,i][...,::-1]
@@ -417,11 +418,11 @@ sigma = 1
 ```
 
 ```{python}
-sato, Vf = hcecp.sato3d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato3d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
-weights = hcecp.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5
 
 i = 0
 Vfx = Vf[...,i][...,::-1]
@@ -476,11 +477,11 @@ import hessian_vectors as hv
 ```
 
 ```{python}
-sato, Vf = hcecp.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato2d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
-sato, Vf = hcecp.sato3d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+sato, Vf = astro.hessian.sato3d(img_noisy, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
