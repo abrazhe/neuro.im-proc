@@ -1,6 +1,6 @@
 import numpy as np
 
-import hessian_cecp as hcecp
+import astromorpho as astro
 
 
 def plot_from_sato(viewer, data, vectors, axis=0, index=1):
@@ -10,7 +10,7 @@ def plot_from_sato(viewer, data, vectors, axis=0, index=1):
             data/length, Vf/Vfx/vectors/xyzuvc/uvc
     """
 
-    lengths = hcecp.percentile_rescale(data)**0.5
+    lengths = astro.enh.percentile_rescale(data)**0.5
     length = lengths.ravel()[::index]
 
     Vf = vectors[..., axis][..., ::-1]
