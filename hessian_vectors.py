@@ -3,7 +3,7 @@ import numpy as np
 import astromorpho as astro
 
 
-def plot_from_sato(viewer, data, vectors, axis=0, index=1):
+def vectors_from_sato(data, vectors, axis=0, index=1):
     """
     *args : list
         list of arguments. Depending on their number they are parsed to::
@@ -58,9 +58,7 @@ def plot_from_sato(viewer, data, vectors, axis=0, index=1):
         vectors[..., 0, 2] = z
         vectors[..., 1, 2] = z1
 
-    add_hessian_vectors(viewer, vectors, length)
-
-    return viewer
+    return vectors, length
 
 
 def add_hessian_vectors(viewer, vectors, length):

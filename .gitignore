@@ -3,3 +3,5 @@ __pycache__/*
 
 existed_code/__pycache__/*
 existed_code/.ipynb_checkpoints/*
+
+.gitignore
