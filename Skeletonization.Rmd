@@ -38,7 +38,15 @@ from numpy.random import randn
 ```
 
 ```{python}
+import napari
+```
+
+```{python}
 import astromorpho as astro
+```
+
+```{python}
+data_place = '/home/levtg/astro-morpho/data/'
 ```
 
 # Тестовая картинка
@@ -142,25 +150,25 @@ imshow(img_noisy, cmap='gray',interpolation='nearest')
 Спираль
 
 ```{python}
-from PIL import Image
+# from PIL import Image
 
-pic = Image.open("/home/incredible/Neuroscience/Code/data/test_images/spiral.png").convert('L')
-img = np.clip(np.asarray(pic), 0, 1)
-imshow(img, cmap='gray')
+# pic = Image.open(os.path.join(data_place, "test_images/spiral.png")).convert('L')
+# img = np.clip(np.asarray(pic), 0, 1)
+# imshow(img, cmap='gray')
 ```
 
 ```{python}
-SNR = 5
-img_noisy = img*SNR + randn(*img.shape)
-imshow(img_noisy, cmap='gray')
+# SNR = 5
+# img_noisy = img*SNR + randn(*img.shape)
+# imshow(img_noisy, cmap='gray')
 ```
 
-Астроцит (типа)
+Ветвления
 
 ```{python}
 from PIL import Image
 
-pic = Image.open("/home/incredible/Neuroscience/Code/data/test_images/astro.png").convert('L')
+pic = Image.open(os.path.join(data_place, "test_images/502013.fig.002e.jpg")).convert('L')
 img = np.clip(np.asarray(pic), 0, 1)
 imshow(img, cmap='gray')
 ```
@@ -214,18 +222,85 @@ li = threshold_li(img_noisy)
 ```
 
 ```{python}
-clear_img = np.where(img_noisy > li, img_noisy, 0)
-clearest_img = remove_small_objects(img_noisy >= li, 5, connectivity=3)
-final_image = np.where(clearest_img, clear_img, 0)
+img_filt = np.where(img_noisy > li, img_noisy, 0)
+binary_clean = remove_small_objects(img_noisy >= li, 5, connectivity=3)
+img_clear = np.where(binary_clean, img_filt, 0)
+```
+
+### 2D
+
+```{python}
+imshow(img_clear, cmap='gray')
+```
+
+```{python}
+final_image = img_clear
+```
+
+```{python}
+final_image /= final_image.max()
+```
+
+```{python}
+plt.imshow(final_image, cmap='gray')
+```
+
+### 3D
+
+```{python}
+plt.imshow(img_clear.max(0), cmap='gray')
+```
+
+```{python}
+final_image = img_clear
+```
+
+## CLAHE
+
+```{python}
+import cv2
+
+clahe = cv2.createCLAHE(clipLimit =2.0, tileGridSize=(8,8))
+```
+
+### 2D
+
+```{python}
+final_image = clahe.apply(img_clear.astype('uint8'))
 ```
 
 ```{python}
 imshow(final_image, cmap='gray')
 ```
 
+### 3D
+
+```{python}
+IMG_SHAPE = img_clear.shape
+```
+
+```{python}
+img_clear_flat = img_clear.reshape((IMG_SHAPE[0], -1))
+```
+
+```{python}
+final_image_flat = clahe.apply(img_clear_flat.astype('uint8'))
+```
+
+```{python}
+img_clear.max()
+```
+
+```{python}
+final_image = final_image_flat.reshape(IMG_SHAPE).astype(float)
+```
+
 ```{python}
 plt.imshow(final_image.max(0), cmap='gray')
 ```
+
+Плохо, потому что работает только с целочисленными значениями.
+
 
 # Вектора Гессе
 
@@ -255,6 +330,11 @@ plt.tight_layout()
 ```
 
 ```{python}
+alpha = np.where(final_image > 0, 1, 0)
+# alpha = 1
+```
+
+```{python}
 fig, axes = plt.subplots(2, 2, figsize=(20, 20))
 
 sigma = 1
@@ -263,7 +343,7 @@ sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of
 ax = axes[0][0]
 ax.imshow(final_image, cmap='gray', origin='lower')
 
-weights = astro.enh.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5 * alpha
 i = 0
 Vfx = Vf[...,i][...,::-1]
 V = Vfx[...,0] # row directions (Y)
@@ -277,7 +357,7 @@ sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of
 ax = axes[0][1]
 ax.imshow(final_image, cmap='gray', origin='lower')
 
-weights = astro.enh.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5 * alpha
 i = 0
 Vfx = Vf[...,i][...,::-1]
 V = Vfx[...,0] # row directions (Y)
@@ -291,7 +371,7 @@ sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of
 ax = axes[1][0]
 ax.imshow(final_image, cmap='gray', origin='lower')
 
-weights = astro.enh.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5 * alpha
 i = 0
 Vfx = Vf[...,i][...,::-1]
 V = Vfx[...,0] # row directions (Y)
@@ -305,7 +385,7 @@ sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of
 ax = axes[1][1]
 ax.imshow(final_image, cmap='gray', origin='lower')
 
-weights = astro.enh.percentile_rescale(sato)**0.5
+weights = astro.enh.percentile_rescale(sato)**0.5 * alpha
 i = 0
 Vfx = Vf[...,i][...,::-1]
 V = Vfx[...,0] # row directions (Y)
@@ -316,6 +396,35 @@ plt.setp(plt.gca(), xticks=[], yticks=[])
 plt.tight_layout()
 ```
 
+```{python}
+img_out, blobs = astro.morpho.frangi(final_image, 3, return_blobness=True)
+```
+
+```{python}
+imshow(img_out)
+```
+
+```{python}
+plt.imshow(blobs)
+```
+
+```{python}
+plt.imshow(sato)
+```
+
+```{python}
+sato_ = sato/sato.max()
+blobs_ = blobs/blobs.max()
+```
+
+```{python}
+imshow(sato_+blobs_)
+```
+
+```{python}
+
+```
+
 # Построение графа ветвей
 
 
@@ -323,6 +432,21 @@ plt.tight_layout()
 
 
 x, y, vectors, weights, img_noisy
+
+```{python}
+from tqdm.auto import tqdm
+```
+
+```{python}
+def weight_of(a, b):
+    try:
+        cos_dist = scipy.spatial.distance.cosine(a, b)
+    except:
+        cos_dist = 0
+    return np.abs(1 - cos_dist) * np.mean([np.linalg.norm(a), np.linalg.norm(b)])
+```
+
+# 2d
 
 ```{python}
 lengths = astro.enh.percentile_rescale(sato)**0.5
@@ -338,15 +462,6 @@ x, y = np.meshgrid(np.arange(nc), np.arange(nr))
 ```
 
 ```{python}
-def weight_of(a, b):
-    try:
-        cos_dist = scipy.spatial.distance.cosine(a, b)
-    except:
-        cos_dist = 0
-    return np.abs(1 - cos_dist) * np.mean([np.linalg.norm(a), np.linalg.norm(b)])
-```
-
-```{python}
 k_h, k_w = 3, 3
 ```
 
@@ -356,7 +471,7 @@ nodes = {}
 ```
 
 ```{python}
-for row in range(vectors.shape[0]):
+for row in tqdm(range(vectors.shape[0])):
     for col in range(vectors.shape[1]):
         cur = (row, col)
         cur_node = (x[cur], y[cur])
@@ -369,10 +484,10 @@ for row in range(vectors.shape[0]):
                 if G.has_edge(cur_node, pos) or cur_node == pos_node:
                     continue
                 weight = weight_of(vectors[cur], vectors[pos])
-                if weight < 10e-3:
+                if weight < 0.1:
                     continue
                 nodes[pos_node] = pos_node
-                G.add_edge(cur_node, pos_node, weight=weight)
+                G.add_edge(cur_node, pos_node, weight=1 - weight)
                 
 ```
 
@@ -380,14 +495,950 @@ for row in range(vectors.shape[0]):
 
 ```{python}
 # # %matplotlib notebook
-plt.figure(figsize=(20, 20))
+plt.figure(figsize=(30, 30))
 width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
 # width = np.where(width < 0.3, np.zeros(width.shape), width)
 edges = nx.draw_networkx_edges(G, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+labels = nx.draw_networkx_labels(G, nodes, font_size=6)
+
 plt.setp(plt.gca(), xticks=[], yticks=[])
 plt.colorbar(edges, ax=plt.gca())
 plt.tight_layout()
 # imshow(clean_img, cmap='gray', origin='lower')
+```
+
+```{python}
+path = nx.shortest_path(G, (3, 56), (23, 28), weight='weight')
+```
+
+```{python}
+path
+```
+
+```{python}
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
+width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(G, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+path_edges = nx.draw_networkx_nodes(G, nodes, nodelist=path, alpha=0.5)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+# imshow(clean_img, cmap='gray', origin='lower')
+```
+
+## 3d 
+
+```{python}
+sigma = 1
+```
+
+```{python}
+sato, Vf = astro.hessian.sato3d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+```
+
+```{python}
+Vfx = Vf[...,0][...,::-1]
+V = Vfx[..., 0]
+U = Vfx[..., 1]
+C = Vfx[..., 2]
+```
+
+```{python}
+lengths = astro.enh.percentile_rescale(sato)**0.5
+```
+
+```{python}
+vectors = np.stack((U*lengths, V*lengths, C*lengths), axis=3)
+```
+
+```{python}
+vectors.shape
+```
+
+```{python}
+nr, nc, nz = (1, U.shape[0]) if U.ndim == 1 else U.shape
+x, y, z = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nz))
+```
+
+```{python}
+k_h, k_w, k_s = 3, 3, 3
+```
+
+```{python}
+G = nx.Graph()
+nodes = {}
+```
+
+```{python}
+def create_graph(image, vectors):
+    G = nx.Graph()
+    nodes = {}
+    shape = vectors.shape
+    for row in tqdm(range(shape[0])):
+        for col in tqdm(range(shape[1])):
+            for stk in tqdm(range(shape[2])):
+                cur = (row, col, stk)
+                cur_node = (x[cur], y[cur], z[cur])
+                nodes[cur_node] = cur_node
+                G.add_node(cur_node, size=image[cur])
+                for i in range(k_w):
+                    for j in range(k_h):
+                        for k in range(k_s):
+                            pos = (np.clip(row + i - k_w//2, 0, shape[0] - 1), 
+                                   np.clip(col + j - k_h//2, 0, shape[1] - 1),
+                                   np.clip(stk + k - k_s//2, 0, shape[2] - 1)) 
+                            pos_node = (x[pos], y[pos], z[pos])
+                            if G.has_edge(cur_node, pos) or cur_node == pos_node:
+                                continue
+                            weight = weight_of(vectors[cur], vectors[pos])
+                            if weight < 10e-3:
+                                continue
+                            nodes[pos_node] = pos_node
+                            G.add_edge(cur_node, pos_node, weight=1 - weight)
+    return G, nodes
+  
+```
+
+```{python}
+G, nodes = create_graph(final_image, vectors)
+```
+
+# ОПТИМИЗАЦИЯ
+
+
+Вместо того, чтобы отдельно обходить каждый пиксель будем смещать весь массив и считать веса через взаимодействие двух массивов.
+Всего получитя 18 массивов для объемных изображений и 8 для плоских.
+
+
+# 2d
+
+
+lu, uu, ru
+
+ll,........ rr
+
+ld, dd, rd
+
+```{python}
+arr = vectors[:]
+```
+
+```{python}
+lu = np.roll(arr, 1, axis=(0, 1))
+lu[0] = 0
+lu[:, 0] = 0
+uu = np.roll(arr, 1, axis=0)
+uu[0] = 0
+ru = np.roll(arr, (1, -1), axis=(0, 1))
+ru[0] = 0
+ru[:, -1] = 0
+
+ll = np.roll(arr, 1, axis=1)
+ll[:, 0] = 0
+rr = np.roll(arr, -1, axis=1)
+rr[:, -1] = 0
+
+ld = np.roll(arr, (-1, 1), axis=(0, 1))
+ld[-1] = 0
+ld[:, 0] = 0
+dd = np.roll(arr, -1, axis=0)
+dd[-1] = 0
+rd = np.roll(arr, -1, axis=(0, 1))
+rd[:, -1] = 0
+rd[-1] = 0
+
+```
+
+```{python}
+lu.shape
+```
+
+```{python}
+w = napari.view_image(arr)
+w.add_image(lu)
+w.add_image(uu)
+w.add_image(ru)
+w.add_image(ll)
+w.add_image(rr)
+w.add_image(ld)
+w.add_image(dd)
+w.add_image(rd)
+```
+
+Имитируем функцию косинусного расстояния:
+$1 - \frac{u\dot v}{||u||_2||v||_2}$
+
+
+Скалярное произведение двух масиивов с векторами
+
+```{python}
+mults = np.einsum('...ij,...ij->...i', arr,uu)
+```
+
+```{python}
+mults.shape
+```
+
+Нормы
+
+```{python}
+norms = np.linalg.norm(arr, axis=-1)
+```
+
+```{python}
+norms
+```
+
+```{python}
+np.linalg.norm(arr[0][0])
+```
+
+```{python}
+norms_uu = np.linalg.norm(uu, axis=-1)
+```
+
+```{python}
+cosines = 1 - mults / ((norms * norms_uu))
+```
+
+```{python}
+arr[1][0]
+```
+
+```{python}
+uu[1][0]
+```
+
+```{python cell_style="split"}
+cosines[1][0]
+```
+
+```{python cell_style="split"}
+scipy.spatial.distance.cosine(arr[1][0], uu[1][0])
+```
+
+Yey!!
+
+```{python}
+norms[1][0], norms_uu[1][0]
+```
+
+```{python cell_style="split"}
+np.mean([norms[1][0], norms_uu[1][0]])
+```
+
+```{python cell_style="split"}
+np.mean([norms, norms_uu], axis=0)[1][0]
+```
+
+```{python}
+def weight_of_arr(a, b):
+    dprod = np.einsum('...ij,...ij->...i', a, b)
+    norm_a = np.linalg.norm(a, axis=-1)
+    norm_b = np.linalg.norm(b, axis=-1)
+    cos_dist = 1 - dprod / ((norm_a * norm_b))
+    np.nan_to_num(cos_dist, nan=0)
+    return np.abs(1 - cos_dist) * np.mean([norm_a, norm_b], axis=0)
+```
+
+```{python}
+weights =1 - weight_of_arr(lu, arr)
+```
+
+Индексы
+
+```{python}
+i, j = np.indices(arr.shape[:-1])
+```
+
+```{python}
+idxs = np.stack((i,j), axis=2)
+```
+
+Слайсы для выделения нужных данных
+
+```{python}
+from IPython.display import Image
+Image(filename='/home/levtg/astro-morpho/data/pictures_nb/IMG_20220408_170850.jpg') 
+```
+
+```{python}
+Image(filename='/home/levtg/astro-morpho/data/pictures_nb/IMG_20220408_170858.jpg') 
+```
+
+Всего 8 вариантов слайсов
+
+```{python}
+lu_crop = (slice(1, None), slice(1, None))
+rd_crop = (slice(None, -1), slice(None, -1))
+
+uu_crop = (slice(1, None))
+dd_crop = (slice(None, -1))
+
+ld_crop = (slice(1, None), slice(None, -1))
+ru_crop = (slice(None, -1), slice(1, None))
+
+rr_crop = (slice(None), slice(1, None))
+ll_crop = (slice(None), slice(None, -1))
+```
+
+```{python}
+shape = idxs.shape
+shape
+```
+
+```{python}
+idx_lu = [(i, j) for i, j in idxs[lu_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+idx_rd = [(i, j) for i, j in idxs[rd_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+
+idx_uu = [(i, j) for i, j in idxs[uu_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+idx_dd = [(i, j) for i, j in idxs[dd_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+
+idx_ru = [(i, j) for i, j in idxs[ru_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+idx_ld = [(i, j) for i, j in idxs[ld_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+
+idx_ll = [(i, j) for i, j in idxs[ll_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+idx_rr = [(i, j) for i, j in idxs[rr_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+```
+
+```{python}
+Gh = nx.Graph()
+nodes = {}
+```
+
+```{python}
+def calc_edges(arr1, arr2, crop, idx1, idx2):
+    weights = 1 - np.nan_to_num(weight_of_arr(arr1, arr2), nan=0)
+    weight = weights[crop].reshape((len(idx1),))
+    return zip(idx1, idx2, weight)
+```
+
+```{python}
+#lu
+# weights_lu =1 - weight_of_arr(lu, arr)
+# weight_lu = weights_lu[rd_crop].reshape(((shape[0]-1)*(shape[1]-1),))
+# Gh.add_weighted_edges_from(zip(idx_lu, idx_rd, weight_lu))
+Gh.add_weighted_edges_from(calc_edges(lu, arr, rd_crop, idx_lu, idx_rd))
+
+# #uu
+# weights_uu =1 - weight_of_arr(uu, arr)
+# weight_uu = weights_uu[dd_crop].reshape(((shape[0]-1)*(shape[1]),))
+# Gh.add_weighted_edges_from(zip(idx_uu, idx_dd, weight_uu))
+Gh.add_weighted_edges_from(calc_edges(uu, arr, dd_crop, idx_uu, idx_dd))
+
+#ru
+# weights_ru =1 - weight_of_arr(ru, arr)
+# weight_ru = weights_ru[ld_crop].reshape(((shape[0]-1)*(shape[1]-1),))
+# Gh.add_weighted_edges_from(zip(idx_ru, idx_ld, weight_ru))
+Gh.add_weighted_edges_from(calc_edges(ru, arr, ld_crop, idx_ru, idx_ld))
+
+#ll
+# weights_ll =1 - weight_of_arr(ll, arr)
+# weight_ll = weights_ll[ll_crop].reshape(((shape[0]-1)*(shape[1]),))
+# Gh.add_weighted_edges_from(zip(idx_ll, idx_rr, weight_ll))
+Gh.add_weighted_edges_from(calc_edges(ll, arr, rr_crop, idx_ll, idx_rr))
+
+# # #rr
+# weights_rr =1 - weight_of_arr(rr, arr)
+# weight_rr = weights_rr[rr_crop].reshape(((shape[0]-1)*(shape[1]),))
+# # Gh.add_weighted_edges_from(zip(idx_rr, idx_ll, weight_rr))
+# Gh.add_weighted_edges_from(calc_edges(rr, arr, ll_crop, idx_rr, idx_ll))
+
+# # #ld
+# weights_ld =1 - weight_of_arr(ld, arr)
+# weight_ld = weights_ld[ld_crop].reshape(((shape[0]-1)*(shape[1]-1),))
+# # Gh.add_weighted_edges_from(zip(idx_ld, idx_ru, weight_ld))
+# Gh.add_weighted_edges_from(calc_edges(ld, arr, ru_crop, idx_ld, idx_ru))
+
+# # #dd
+# weights_dd =1 - weight_of_arr(dd, arr)
+# weight_dd = weights_dd[dd_crop].reshape(((shape[0]-1)*(shape[1]),))
+# # Gh.add_weighted_edges_from(zip(idx_dd, idx_uu, weight_dd))
+# Gh.add_weighted_edges_from(calc_edges(dd, arr, uu_crop, idx_dd, idx_uu))
+
+# # #rd
+# weights_rd =1 - weight_of_arr(rd, arr)
+# weight_rd = weights_rd[rd_crop].reshape(((shape[0]-1)*(shape[1]-1),))
+# # Gh.add_weighted_edges_from(zip(idx_rd, idx_lu, weight_rd))
+# Gh.add_weighted_edges_from(calc_edges(rd, arr, lu_crop, idx_rd, idx_lu))
+
+```
+
+```{python}
+idxs_ = [(i, j) for i, j in idxs.reshape((shape[0]*shape[1], 2))]
+```
+
+```{python}
+Gh.edges(data=True)
+```
+
+```{python}
+nodes = {n:n for n in Gh.nodes()}
+```
+
+```{python cell_style="split"}
+# Полный массив
+
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
+width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+# labels = nx.draw_networkx_labels(G, nodes, font_size=6)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+```
+
+```{python cell_style="split"}
+# Половина массива
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
+width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+# labels = nx.draw_networkx_labels(G, nodes, font_size=6)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+```
+
+```{python cell_style="split"}
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
+width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(G, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+```
+
+```{python}
+path = nx.shortest_path(Gh, (3, 56), (11, 23), weight='weight')
+```
+
+```{python}
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
+# width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+path_edges = nx.draw_networkx_nodes(Gh, nodes, nodelist=path, alpha=0.5)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+# imshow(clean_img, cmap='gray', origin='lower')
+```
+
+# 3d
+
+```{python}
+arr = vectors[:]
+```
+
+```{python}
+arr.shape
+```
+
+В ходе расчетов было выяснено, что нам понадобятся: смещённые массивы, слайсы, индексы
+
+
+Массивы
+
+```{python}
+ooo = np.roll(arr, 1, axis=0)
+ooo[0] = 0
+
+luo = np.roll(arr, 1, axis=(0, 1, 2))
+luo[0] = 0
+luo[:, 0] = 0
+luo[:,:, 0] = 0
+
+uuo = np.roll(arr, 1, axis=(0,1))
+uuo[0] = 0
+uuo[:, 0] = 0
+
+ruo = np.roll(arr, (1, 1, -1), axis=(0, 1, 2))
+ruo[0] = 0
+ruo[:, 0] = 0
+ruo[:,:, -1] = 0
+
+
+llo = np.roll(arr, 1, axis=(0, 2))
+llo[0] = 0
+llo[:,:, 0] = 0
+
+rro = np.roll(arr, (1, -1), axis=(0, 2))
+rro[0] = 0
+rro[:,:, -1] = 0
+
+ldo = np.roll(arr, (1, -1, 1), axis=(0, 1, 2))
+ldo[0] = 0
+ldo[:, -1] = 0
+ldo[:,:, 0] = 0
+
+ddo = np.roll(arr, (1, -1), axis=(0, 1))
+ddo[0] = 0
+ddo[:, -1] = 0
+
+rdo = np.roll(arr, (1, -1, -1), axis=(0, 1, 2))
+rdo[0] = 0
+rdo[:, -1] = 0
+rdo[:,:, -1] = 0
+
+luu = np.roll(arr, 1, axis=(1, 2))
+luu[:, 0] = 0
+luu[:,:, 0] = 0
+
+uuu = np.roll(arr, 1, axis=1)
+uuu[:, 0] = 0
+
+ruu = np.roll(arr, (1, -1), axis=(1, 2))
+ruu[:, 0] = 0
+ruu[:,:, -1] = 0
+
+lll = np.roll(arr, 1, axis=2)
+lll[:,:, 0] = 0
+
+rrr = np.roll(arr, -1, axis=2)
+rrr[:,:, -1] = 0
+
+ldd = np.roll(arr, (-1, 1), axis=(1, 2))
+ldd[:, -1] = 0
+ldd[:,:, 0] = 0
+
+ddd = np.roll(arr, -1, axis=1)
+ddd[:, -1] = 0
+
+rdd = np.roll(arr, -1, axis=(1, 2))
+rdd[:, -1] = 0
+rdd[:,:, -1] = 0
+
+lui = np.roll(arr, (-1, 1, 1), axis=(0, 1, 2))
+lui[-1] = 0
+lui[:, 0] = 0
+lui[:,:, 0] = 0
+
+uui = np.roll(arr, (-1, 1), axis=(0,1))
+uui[-1] = 0
+uui[:, 0] = 0
+
+rui = np.roll(arr, (-1, 1, -1), axis=(0, 1, 2))
+rui[-1] = 0
+rui[:, 0] = 0
+rui[:,:, -1] = 0
+
+lli = np.roll(arr, (-1, 1), axis=(0,2))
+lli[-1] = 0
+lli[:,:, 0] = 0
+
+rri = np.roll(arr, -1, axis=(0,2))
+rri[-1] = 0
+rri[:,:, -1] = 0
+
+ldi = np.roll(arr, (-1, -1, 1), axis=(0, 1, 2))
+ldi[-1] = 0
+ldi[:, -1] = 0
+ldi[:,:, 0] = 0
+
+ddi = np.roll(arr, -1, axis=(0,1))
+ddi[-1] = 0
+ddi[:, -1] = 0
+
+rdi = np.roll(arr, -1, axis=(0, 1, 2))
+rdi[-1] = 0
+rdi[:,:, -1] = 0
+rdi[:, -1] = 0
+
+iii = np.roll(arr, -1, axis=0)
+iii[-1] = 0
+
+```
+
+```{python}
+w = napari.view_image(arr)
+w.add_image(ooo)
+w.add_image(luo)
+w.add_image(uuo)
+w.add_image(ruo)
+w.add_image(llo)
+w.add_image(rro)
+w.add_image(ldo)
+w.add_image(ddo)
+w.add_image(rdo)
+w.add_image(luu)
+w.add_image(uuu)
+w.add_image(ruu)
+w.add_image(lll)
+w.add_image(rrr)
+w.add_image(ldd)
+w.add_image(ddd)
+w.add_image(rdd)
+w.add_image(lui)
+w.add_image(uui)
+w.add_image(rui)
+w.add_image(lli)
+w.add_image(rri)
+w.add_image(ldi)
+w.add_image(ddi)
+w.add_image(rdi)
+w.add_image(iii)
+```
+
+Слайсы
+
+```{python}
+ooo_crop = (slice(1, None))
+
+luo_crop = (slice(1, None), slice(1, None), slice(1, None))
+rdo_crop = (slice(1, None), slice(None, -1), slice(None, -1))
+
+uuo_crop = (slice(1, None), slice(1, None))
+ddo_crop = (slice(1, None), slice(None, -1))
+
+ldo_crop = (slice(1, None), slice(1, None), slice(None, -1))
+ruo_crop = (slice(1, None), slice(None, -1), slice(1, None))
+
+rro_crop = (slice(1, None), slice(None), slice(1, None))
+llo_crop = (slice(1, None), slice(None), slice(None, -1))
+
+
+luu_crop = (slice(None), slice(1, None), slice(1, None))
+rdd_crop = (slice(None), slice(None, -1), slice(None, -1))
+
+uuu_crop = (slice(None), slice(1, None))
+ddd_crop = (slice(None), slice(None, -1))
+
+ldd_crop = (slice(None), slice(1, None), slice(None, -1))
+ruu_crop = (slice(None), slice(None, -1), slice(1, None))
+
+rrr_crop = (slice(None), slice(None), slice(1, None))
+lll_crop = (slice(None), slice(None), slice(None, -1))
+
+lui_crop = (slice(None, -1), slice(1, None), slice(1, None))
+rdi_crop = (slice(None, -1), slice(None, -1), slice(None, -1))
+
+uui_crop = (slice(None, -1), slice(1, None))
+ddi_crop = (slice(None, -1), slice(None, -1))
+
+ldi_crop = (slice(None, -1), slice(1, None), slice(None, -1))
+rui_crop = (slice(None, -1), slice(None, -1), slice(1, None))
+
+rri_crop = (slice(None, -1), slice(None), slice(1, None))
+lli_crop = (slice(None, -1), slice(None), slice(None, -1))
+
+iii_crop = (slice(None, -1))
+```
+
+Индексы
+
+```{python}
+i, j, k = np.indices(arr.shape[:-1])
+```
+
+```{python}
+idxs = np.stack((i,j,k), axis=3)
+```
+
+```{python}
+shape = idxs.shape
+shape
+```
+
+```{python}
+idxs_ = [(i, j, k) for i, j, k in idxs.reshape((shape[0]*shape[1]*shape[2], 3))]
+```
+
+Расчет индексов занимает слишком много места поэтому здесь только список 
+
+```{python}
+# idx_ooo = [(i, j, k) for i, j, k in idxs[ooo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+
+# idx_luo = [(i, j, k) for i, j, k in idxs[luo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_rdo = [(i, j, k) for i, j, k in idxs[rdo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_uuo = [(i, j, k) for i, j, k in idxs[uuo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+# idx_ddo = [(i, j, k) for i, j, k in idxs[ddo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+
+# idx_ruo = [(i, j, k) for i, j, k in idxs[ruo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_ldo = [(i, j, k) for i, j, k in idxs[ldo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_llo = [(i, j, k) for i, j, k in idxs[llo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+# idx_rro = [(i, j, k) for i, j, k in idxs[rro_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+
+# idx_luu = [(i, j, k) for i, j, k in idxs[luu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_rdd = [(i, j, k) for i, j, k in idxs[rdd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_uuu = [(i, j, k) for i, j, k in idxs[uuu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+# idx_ddd = [(i, j, k) for i, j, k in idxs[ddd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+
+# idx_ruu = [(i, j, k) for i, j, k in idxs[ruu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_ldd = [(i, j, k) for i, j, k in idxs[ldd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_lll = [(i, j, k) for i, j, k in idxs[lll_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+# idx_rrr = [(i, j, k) for i, j, k in idxs[rrr_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+
+# idx_lui = [(i, j, k) for i, j, k in idxs[lui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_rdi = [(i, j, k) for i, j, k in idxs[rdi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_uui = [(i, j, k) for i, j, k in idxs[uui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+# idx_ddi = [(i, j, k) for i, j, k in idxs[ddi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+
+# idx_rui = [(i, j, k) for i, j, k in idxs[rui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# idx_ldi = [(i, j, k) for i, j, k in idxs[ldi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# idx_lli = [(i, j, k) for i, j, k in idxs[lli_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+# idx_rri = [(i, j, k) for i, j, k in idxs[rri_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+
+# idx_iii = [(i, j, k) for i, j, k in idxs[iii_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+```
+
+Расчет весов и создание графа
+
+```{python}
+G3 = nx.Graph()
+nodes3 = {}
+```
+
+```{python}
+nodes3 = {n:n for n in idxs_}
+```
+
+```{python}
+def calc_edges(arr1, arr2, crop, idx1, idx2):
+    weights = 1 - weight_of_arr(arr1, arr2)
+    weight = weights[crop].reshape((len(idx1),))
+    return zip(idx1, idx2, weight)
+```
+
+```{python}
+idx_ooo = [(i, j, k) for i, j, k in idxs[ooo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+idx_iii = [(i, j, k) for i, j, k in idxs[iii_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, ooo, ooo_crop, idx_ooo, idx_iii))
+# %time G3.add_weighted_edges_from(calc_edges(arr, iii, iii_crop, idx_iii, idx_ooo))
+
+del ooo
+del iii
+del idx_ooo
+del idx_iii
+
+
+idx_luo = [(i, j, k) for i, j, k in idxs[luo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_rdi = [(i, j, k) for i, j, k in idxs[rdi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, luo, luo_crop, idx_luo, idx_rdi))
+# %time G3.add_weighted_edges_from(calc_edges(arr, rdi, rdi_crop, idx_rdi, idx_luo))
+
+del luo
+del rdi
+del idx_rdi
+del idx_luo
+
+
+idx_ddi = [(i, j, k) for i, j, k in idxs[ddi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+idx_uuo = [(i, j, k) for i, j, k in idxs[uuo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, uuo, uuo_crop, idx_uuo, idx_ddi))
+# %time G3.add_weighted_edges_from(calc_edges(arr, ddi, ddi_crop, idx_ddi, idx_uuo))
+
+del uuo
+del ddi
+del idx_ddi
+del idx_uuo
+
+
+idx_ruo = [(i, j, k) for i, j, k in idxs[ruo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_ldi = [(i, j, k) for i, j, k in idxs[ldi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, ruo, ruo_crop, idx_ruo, idx_ldi))
+# %time G3.add_weighted_edges_from(calc_edges(arr, ldi, ldi_crop, idx_ldi, idx_ruo))
+
+del ruo
+del ldi
+del idx_ldi
+del idx_ruo
+
+
+idx_llo = [(i, j, k) for i, j, k in idxs[llo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+idx_rri = [(i, j, k) for i, j, k in idxs[rri_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, llo, llo_crop, idx_llo, idx_rri))
+# %time G3.add_weighted_edges_from(calc_edges(arr, rri, rri_crop, idx_rri, idx_llo))
+
+del llo
+del rri
+del idx_rri
+del idx_llo
+
+
+idx_ldo = [(i, j, k) for i, j, k in idxs[ldo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_rui = [(i, j, k) for i, j, k in idxs[rui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, ldo, ldo_crop, idx_ldo, idx_rui))
+# %time G3.add_weighted_edges_from(calc_edges(arr, rui, rui_crop, idx_rui, idx_ldo))
+
+del ldo
+del rui
+del idx_rui
+del idx_ldo
+
+
+idx_ddo = [(i, j, k) for i, j, k in idxs[ddo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+idx_uui = [(i, j, k) for i, j, k in idxs[uui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, ddo, ddo_crop, idx_ddo, idx_ddo))
+# %time G3.add_weighted_edges_from(calc_edges(arr, uui, uui_crop, idx_uui, idx_uui))
+
+del ddo
+del uui
+del idx_uui
+del idx_ddo
+
+
+idx_rdo = [(i, j, k) for i, j, k in idxs[rdo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_lui = [(i, j, k) for i, j, k in idxs[lui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, rdo, rdo_crop, idx_rdo, idx_lui))
+# %time G3.add_weighted_edges_from(calc_edges(arr, lui, lui_crop, idx_lui, idx_rdo))
+
+del rdo
+del lui
+del idx_lui
+del idx_rdo
+
+
+idx_luu = [(i, j, k) for i, j, k in idxs[luu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+idx_rdd = [(i, j, k) for i, j, k in idxs[rdd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, luu, luu_crop, idx_luu, idx_rdd))
+# %time G3.add_weighted_edges_from(calc_edges(arr, rdd, rdd_crop, idx_rdd, idx_luu))
+
+del rdd
+del luu
+del idx_luu
+del idx_rdd
+
+
+idx_uuu = [(i, j, k) for i, j, k in idxs[uuu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+idx_ddd = [(i, j, k) for i, j, k in idxs[ddd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, uuu, uuu_crop, idx_uuu, idx_ddd))
+# %time G3.add_weighted_edges_from(calc_edges(arr, ddd, ddd_crop, idx_ddd, idx_uuu))
+
+del ddd
+del uuu
+del idx_uuu
+del idx_ddd
+
+
+idx_ruu = [(i, j, k) for i, j, k in idxs[ruu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+idx_ldd = [(i, j, k) for i, j, k in idxs[ldd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, ruu, ruu_crop, idx_ruu, idx_ldd))
+# %time G3.add_weighted_edges_from(calc_edges(arr, ldd, ldd_crop, idx_ldd, idx_ruu))
+
+del ldd
+del ruu
+del idx_ruu
+del idx_ldd
+
+
+idx_lll = [(i, j, k) for i, j, k in idxs[lll_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+idx_rrr = [(i, j, k) for i, j, k in idxs[rrr_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+
+# %time G3.add_weighted_edges_from(calc_edges(arr, lll, lll_crop, idx_lll, idx_rrr))
+# %time G3.add_weighted_edges_from(calc_edges(arr, rrr, rrr_crop, idx_rrr, idx_lll))
+
+del lll
+del rrr
+del idx_rrr
+del idx_lll
+```
+
+```{python}
+nx.write_weighted_edgelist(Gh, '3d_graph')
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+nodes3
+```
+
+```{python}
+def draw_labels(G, pos, labels=None):
+    if labels is None:
+        labels = {n: n for n in G.nodes()}
+    props = {'label': np.asarray([str(label) for _, label in labels.items()])}
+    xyz = np.asarray([pos[n] for n, _ in labels.items()])
+    return xyz, props
+```
+
+```{python}
+def draw_nodes(G, pos, nodelist):
+    return np.asarray([pos[n] for n in nodelist])
+```
+
+```{python}
+w = napari.view_image(final_image)
+```
+
+```{python}
+xyz, props = draw_labels(G3, nodes3)
+```
+
+```{python}
+w.add_points(xyz, text=props['label'])
+```
+
+```{python}
+shapes_layer = w.add_shapes(
+        xyz,
+#         face_color='transparent',
+#         edge_color='transparent',
+        properties=props['label'],
+        name='bounding box',
+        text=text_parameters,
+    )
+```
+
+```{python}
+text_parameters = {
+    'string': 'lll{label}',
+    'size': 12,
+    'color': 'white',
+#     'anchor': 'upper_left',
+#     'translation': [-3, 0]
+}
+```
+
+```{python}
+xyz[...,2].max()
+```
+
+```{python}
+napari.view_points(
+        np.asarray([0,1]),
+#         face_color='transparent',
+#         edge_color='transparent',
+        properties={'label': 'ababab'},
+        name='bounding box',
+        text=text_parameters,
+    )
+```
+
+```{python}
+
 ```
 
 ```{python}
@@ -406,91 +1457,10 @@ from skimage.filters import threshold_li, threshold_otsu
 otsu, li = threshold_otsu(width), threshold_li(width)
 ```
 
-# Построение графа узлов
-
-
-В отличие от предыдущего пункта определяем узлы как места со слабыми связями рядом с сильными. Вес считается как косинусное растояние без учитывания длин векторов. (Можно откомментировать и будет как в пункте выше)
-
-Слабыми считаются связи у которых вес ~0; т е угол между соседними векторами порядка 90
+## Скелетонизация
 
 ```{python}
-def weight_of(a, b):
-    try:
-        cos_dist = scipy.spatial.distance.cosine(a, b)
-    except:
-        cos_dist = 0
-    return np.abs(1 - cos_dist) #* np.mean([np.linalg.norm(a), np.linalg.norm(b)])
-```
-
-```{python}
-Gn = nx.Graph()
-nodes_n = {}
-weights = []
-```
-
-```{python}
-for row in range(vectors.shape[0]):
-    for col in range(vectors.shape[1]):
-        cur = (row, col)
-        cur_node = (x[cur], y[cur])
-        nodes[cur_node] = cur_node
-        Gn.add_node(cur_node, size=final_image[cur])
-        for i in range(k_w):
-            for j in range(k_h):
-                pos = (np.clip(row + i - k_w//2, 0, U.shape[0] - 1), np.clip(col + j - k_h//2, 0, U.shape[1] - 1)) 
-                pos_node = (x[pos], y[pos])
-                if Gn.has_edge(cur_node, pos) or cur_node == pos_node:
-                    continue
-                weight = weight_of(vectors[cur], vectors[pos])
-                weights.append(weight)
-                nodes[pos_node] = pos_node
-                Gn.add_edge(cur_node, pos_node, weight=weight)
-                
-```
-
-```{python}
-# # %matplotlib notebook
-plt.figure(figsize=(60, 60))
-width = 1 - np.array([edgedata["weight"] for _, _, edgedata in Gn.edges(data=True)])
-# width = np.where(width > -0.1, np.zeros(width.shape), width)
-nx.draw_networkx_edges(Gn, nodes, width=width*5)
-# imshow(clean_img, cmap='gray', origin='lower')
-```
-
-```{python}
-
-```
-
-```{python}
-ves = astro.morpho.vesselness(final_image, 2)
-```
-
-```{python}
-plt.figure(figsize=(11,9))
-# imshow(final_image, cmap='gray', origin='lower')
-
-imshow(ves)
-plt.setp(plt.gca(), xticks=[], yticks=[])
-plt.tight_layout()
-```
-
-```{python}
-blobs = astro.morpho.round_blobs(sato)
-```
-
-```{python}
-plt.figure(figsize=(11,9))
-# imshow(final_image, cmap='gray', origin='lower')
-
-imshow(blobs)
-plt.setp(plt.gca(), xticks=[], yticks=[])
-plt.tight_layout()
-```
-
-## Gabor filter
-
-```{python}
-
+plt.imshow(skeletonize(final_image/final_image.max(), method='lee'))
 ```
 
 ```{python}
@@ -522,14 +1492,28 @@ plt.tight_layout()
 ```{python}
 import hessian_vectors as hv
 import napari
+import skimage.feature as skf
 ```
 
 ```{python}
-sigma = 0.5
+from numba import jit
+```
+
+```{python}
+sigma = 1
 ```
 
 ```{python}
 sato, Vf = astro.hessian.sato3d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+```
+
+```{python}
+from importlib import reload 
+reload(hv)
+```
+
+```{python}
+vectors3d = 
 ```
 
 ```{python}
@@ -547,72 +1531,120 @@ napari.run()
 ```
 
 ```{python}
+w = napari.view_image(final_image)
+
+sigma = 1
+sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+hv.plot_from_sato(w, sato, Vf)
+
+sigma = 2
+sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+hv.plot_from_sato(w, sato, Vf)
+
+sigma = 3
+sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+hv.plot_from_sato(w, sato, Vf)
+
+sigma = 4
+sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+hv.plot_from_sato(w, sato, Vf)
+
+napari.run()
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+w.add_image(final_image)
+```
+
+```{python}
 from skimage.filters import ridges as skridges
-# @jit
-def vesselness(img, sigma, cc=2., beta=0.5):
-    #H = skf.hessian_matrix(img,sigma)
-    #Hl = skf.hessian_matrix_eigvals(H)
+@jit
+def vesselness(img, sigma,cc=2.,beta=0.5):
+#     H = skf.hessian_matrix(img,sigma)
+#     H_norm = np.array(H)*sigma**2
+#     Hl = skf.hessian_matrix_eigvals(H_norm)
     Hl = skridges.compute_hessian_eigenvalues(img, sigma)
-    print(Hl.shape)
     sh = img.shape
     v = np.zeros(sh)
     for r in range(sh[0]):
         for c in range(sh[1]):
             for h in range(sh[2]):
-                l1,l2 = Hl[0][r,c,h], Hl[1][r,c,h]
-    #             print(np.abs(l1))
-                if np.linalg.norm(l2) < np.linalg.norm(l1):
+                l1,l2 = Hl[0][r,c, h],Hl[1][r,c, h]
+
+                if abs(l2) < abs(l1):
                     l1,l2 = l2,l1
                 s = np.sqrt(l1**2 + l2**2)
 
                 if l2 >= 0:
-                    v[r,c,h] = 0
+                    v[r,c, h] = 0
                 else:
                     Rb = l1/l2
-                    v[r,c,h] =  (1 - np.exp(-s**2/(2*cc**2)))*np.exp(-(Rb**2)/(2*beta**2))
+                    v[r,c, h] =  (1 - np.exp(-s**2/(2*cc**2)))*np.exp(-(Rb**2)/(2*beta**2))
                     #v[r,c] =  (1 - exp(-(0**2)/(2*c**2)))
                     pass
     return v
+
+def multiscale_vesselness(img, sigma_start, sigma_stop, nlevels=50, reduce_fn=np.max):
+    return reduce_fn([vesselness(img, sigma)*sigma**2 for sigma in np.linspace(sigma_start,sigma_stop, nlevels)],0)
 ```
 
 ```{python}
-ves = vesselness(final_image, 3)
-viewer = napari.view_image(ves)
+ves = multiscale_vesselness(final_image, 0.5, 3)
+w.add_image(ves)
+```
 
-ves = vesselness(final_image, 2)
-viewer.add_image(ves)
-
-ves = vesselness(final_image, 1)
-viewer.add_image(ves)
-
-ves = vesselness(final_image, 0.5)
-viewer.add_image(ves)
-
+```{python}
+ves = multiscale_vesselness(final_image, 0.5, 3)
+w = napari.view_image(ves)
 ```
 
 ```{python}
 from skimage.filters import ridges as skridges
-skridges.compute_hessian_eigenvalues(final_image, 1)
+# skridges.compute_hessian_eigenvalues(final_image, 1)
 ```
 
 ```{python}
-
+import astromorpho.tsnails as ts
 ```
 
 ```{python}
-
+# %time trails = ts.turbosnail_vesselness(img_noisy, 0.5)
 ```
 
 ```{python}
-
+v = napari.view_image(final_image)
+v.add_image(trails)
+napari.run()
 ```
 
 ```{python}
-
+sato, Vf = astro.hessian.sato3d(final_image, 2, hessian_variant='gradient_of_smoothed', return_vectors=True)
 ```
 
 ```{python}
+hv.plot_from_sato(v, sato2, Vf)
+```
 
+```{python}
+# %time trails_1 = ts.turbosnail_vesselness(img_noisy, 1)
+# %time trails_2 = ts.turbosnail_vesselness(img_noisy, 2)
+```
+
+```{python}
+v.add_image(trails_1)
+v.add_image(trails_2)
 ```
 
 ```{python}
@@ -652,6 +1684,38 @@ skridges.compute_hessian_eigenvalues(final_image, 1)
 
 Определение центральной линии отростков последовательным перемещением по границе сомы и выделением самых ярких участков. Перемещение по вектору и снова поиск.
 
+
+```{python}
+
+```
+
+```{python}
+from skimage.morphology import skeletonize_3d, skeletonize
+```
+
+```{python}
+w = napari.view_image(final_image)
+```
+
+```{python}
+w.add_image(skeletonize_3d(final_image/final_image.max()))
+```
+
+```{python}
+w.add_image(final_image/final_image.max())
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
 
 ```{python}
 
