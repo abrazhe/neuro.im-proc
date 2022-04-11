@@ -1,2 +1,5 @@
 __pycache__/*
 .ipynb_checkpoints/*
+
+existed_code/__pycache__/*
+existed_code/.ipynb_checkpoints/*
