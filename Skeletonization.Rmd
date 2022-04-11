@@ -871,7 +871,7 @@ idxs_ = [(i, j) for i, j in idxs.reshape((shape[0]*shape[1], 2))]
 ```
 
 ```{python}
-Gh.edges(data=True)
+# Gh.edges(data=True)
 ```
 
 ```{python}
@@ -915,6 +915,8 @@ plt.setp(plt.gca(), xticks=[], yticks=[])
 plt.colorbar(edges, ax=plt.gca())
 plt.tight_layout()
 ```
+
+Что-то не так с матрицами и 
 
 ```{python}
 path = nx.shortest_path(Gh, (3, 56), (11, 23), weight='weight')
