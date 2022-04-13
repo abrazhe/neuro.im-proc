@@ -253,6 +253,7 @@ plt.imshow(img_clear.max(0), cmap='gray')
 
 ```{python}
 final_image = img_clear
+# final_image = img_clear.max(0)
 ```
 
 ## CLAHE
@@ -707,7 +708,7 @@ cosines = 1 - mults / ((norms * norms_uu))
 arr[1][0]
 ```
 
-```{python}
+```{python cell_style="center"}
 uu[1][0]
 ```
 
@@ -738,8 +739,8 @@ def weight_of_arr(a, b):
     dprod = np.einsum('...ij,...ij->...i', a, b)
     norm_a = np.linalg.norm(a, axis=-1)
     norm_b = np.linalg.norm(b, axis=-1)
-    cos_dist = 1 - dprod / ((norm_a * norm_b))
-    np.nan_to_num(cos_dist, nan=0)
+    cos_dist = np.nan_to_num(dprod / ((norm_a * norm_b)), nan=0)
+    cos_dist = 1 - cos_dist
     return np.abs(1 - cos_dist) * np.mean([norm_a, norm_b], axis=0)
 ```
 
@@ -780,8 +781,8 @@ dd_crop = (slice(None, -1))
 ld_crop = (slice(1, None), slice(None, -1))
 ru_crop = (slice(None, -1), slice(1, None))
 
-rr_crop = (slice(None), slice(1, None))
-ll_crop = (slice(None), slice(None, -1))
+rr_crop = (slice(None), slice(None, -1))
+ll_crop = (slice(None), slice(1, None))
 ```
 
 ```{python}
@@ -790,18 +791,55 @@ shape
 ```
 
 ```{python}
-idx_lu = [(i, j) for i, j in idxs[lu_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
-idx_rd = [(i, j) for i, j in idxs[rd_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+# idx_lu = [(i, j) for i, j in idxs[rd_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+# idx_rd = [(i, j) for i, j in idxs[lu_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
 
-idx_uu = [(i, j) for i, j in idxs[uu_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
-idx_dd = [(i, j) for i, j in idxs[dd_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+# idx_uu = [(i, j) for i, j in idxs[dd_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+# idx_dd = [(i, j) for i, j in idxs[uu_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
 
-idx_ru = [(i, j) for i, j in idxs[ru_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
-idx_ld = [(i, j) for i, j in idxs[ld_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+# idx_ru = [(i, j) for i, j in idxs[ld_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
+# idx_ld = [(i, j) for i, j in idxs[ru_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))]
 
-idx_ll = [(i, j) for i, j in idxs[ll_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
-idx_rr = [(i, j) for i, j in idxs[rr_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+# idx_ll = [(i, j) for i, j in idxs[rr_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+# idx_rr = [(i, j) for i, j in idxs[ll_crop].reshape(((shape[0]-1)*(shape[1]), 2))]
+
+idx_lu = idxs[rd_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))
+idx_rd = idxs[lu_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))
+
+idx_uu = idxs[dd_crop].reshape(((shape[0]-1)*(shape[1]), 2))
+idx_dd = idxs[uu_crop].reshape(((shape[0]-1)*(shape[1]), 2))
+
+idx_ru = idxs[ld_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))
+idx_ld = idxs[ru_crop].reshape(((shape[0]-1)*(shape[1]-1), 2))
+
+idx_ll = idxs[rr_crop].reshape(((shape[0]-1)*(shape[1]), 2))
+idx_rr = idxs[ll_crop].reshape(((shape[0]-1)*(shape[1]), 2))
 ```
+
+```{python}
+for i, j in zip(idx_ru, idx_ld):
+    print(i, j)
+```
+
+```{python}
+weights = 1 - weight_of_arr(arr, lu)
+weight = weights[lu_crop]
+```
+
+```{python}
+weight[weight < 0.7], tuple(np.asarray(idx_lu)[weight.ravel()<0.7][0])
+```
+
+```{python}
+def calc_edges(arr1, arr2, crop, index1, index2):
+    weights = 1 - weight_of_arr(arr1, arr2)
+    weight = weights[crop].ravel()
+    idx1 = [(j, i) for i, j in index1[weight<0.7]]
+    idx2 = [(j, i) for i, j in index2[weight<0.7]]
+    return zip(idx1, idx2, weight[weight<0.7])
+```
+
+Можно пользоваться только половиной массивов так как значения весов симметричны
 
 ```{python}
 Gh = nx.Graph()
@@ -809,36 +847,29 @@ nodes = {}
 ```
 
 ```{python}
-def calc_edges(arr1, arr2, crop, idx1, idx2):
-    weights = 1 - np.nan_to_num(weight_of_arr(arr1, arr2), nan=0)
-    weight = weights[crop].reshape((len(idx1),))
-    return zip(idx1, idx2, weight)
-```
-
-```{python}
 #lu
 # weights_lu =1 - weight_of_arr(lu, arr)
 # weight_lu = weights_lu[rd_crop].reshape(((shape[0]-1)*(shape[1]-1),))
 # Gh.add_weighted_edges_from(zip(idx_lu, idx_rd, weight_lu))
-Gh.add_weighted_edges_from(calc_edges(lu, arr, rd_crop, idx_lu, idx_rd))
+# %time Gh.add_weighted_edges_from(calc_edges(lu, arr, lu_crop, idx_lu, idx_rd))
 
 # #uu
 # weights_uu =1 - weight_of_arr(uu, arr)
 # weight_uu = weights_uu[dd_crop].reshape(((shape[0]-1)*(shape[1]),))
 # Gh.add_weighted_edges_from(zip(idx_uu, idx_dd, weight_uu))
-Gh.add_weighted_edges_from(calc_edges(uu, arr, dd_crop, idx_uu, idx_dd))
+# %time Gh.add_weighted_edges_from(calc_edges(uu, arr, uu_crop, idx_uu, idx_dd))
 
 #ru
 # weights_ru =1 - weight_of_arr(ru, arr)
 # weight_ru = weights_ru[ld_crop].reshape(((shape[0]-1)*(shape[1]-1),))
 # Gh.add_weighted_edges_from(zip(idx_ru, idx_ld, weight_ru))
-Gh.add_weighted_edges_from(calc_edges(ru, arr, ld_crop, idx_ru, idx_ld))
+# %time Gh.add_weighted_edges_from(calc_edges(ru, arr, ld_crop, idx_ru, idx_ld))
 
 #ll
 # weights_ll =1 - weight_of_arr(ll, arr)
 # weight_ll = weights_ll[ll_crop].reshape(((shape[0]-1)*(shape[1]),))
 # Gh.add_weighted_edges_from(zip(idx_ll, idx_rr, weight_ll))
-Gh.add_weighted_edges_from(calc_edges(ll, arr, rr_crop, idx_ll, idx_rr))
+# %time Gh.add_weighted_edges_from(calc_edges(ll, arr, ll_crop, idx_ll, idx_rr))
 
 # # #rr
 # weights_rr =1 - weight_of_arr(rr, arr)
@@ -867,11 +898,16 @@ Gh.add_weighted_edges_from(calc_edges(ll, arr, rr_crop, idx_ll, idx_rr))
 ```
 
 ```{python}
-idxs_ = [(i, j) for i, j in idxs.reshape((shape[0]*shape[1], 2))]
+1-weight_of_arr(uu, arr), (1-weight_of_arr(dd, arr))[dd_crop]
 ```
 
 ```{python}
-# Gh.edges(data=True)
+# G edges
+G.edges(data=True)
+```
+
+```{python}
+Gh.edges(data=True)
 ```
 
 ```{python}
@@ -879,24 +915,10 @@ nodes = {n:n for n in Gh.nodes()}
 ```
 
 ```{python cell_style="split"}
-# Полный массив
-
-plt.figure(figsize=(30, 30))
-width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
-width = np.where(width > 0.7, np.zeros(width.shape), width)
-edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
-# labels = nx.draw_networkx_labels(G, nodes, font_size=6)
-
-plt.setp(plt.gca(), xticks=[], yticks=[])
-plt.colorbar(edges, ax=plt.gca())
-plt.tight_layout()
-```
-
-```{python cell_style="split"}
 # Половина массива
 plt.figure(figsize=(30, 30))
 width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
-width = np.where(width > 0.7, np.zeros(width.shape), width)
+# width = np.where(width > 0.7, np.zeros(width.shape), width)
 edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
 # labels = nx.draw_networkx_labels(G, nodes, font_size=6)
 
@@ -906,6 +928,7 @@ plt.tight_layout()
 ```
 
 ```{python cell_style="split"}
+# Обход по картинке
 plt.figure(figsize=(30, 30))
 width = np.array([edgedata["weight"] for _, _, edgedata in G.edges(data=True)])
 width = np.where(width > 0.7, np.zeros(width.shape), width)
@@ -916,16 +939,20 @@ plt.colorbar(edges, ax=plt.gca())
 plt.tight_layout()
 ```
 
-Что-то не так с матрицами и 
+```{python}
+napari.view_image(final_image)
+```
+
+Что-то не так с матрицами и узлами. Есть смещение по индексам. Пока непонятно почему
 
 ```{python}
-path = nx.shortest_path(Gh, (3, 56), (11, 23), weight='weight')
+path = nx.shortest_path(Gh, (105, 124), (159, 143), weight='weight')
 ```
 
 ```{python}
 plt.figure(figsize=(30, 30))
 width = np.array([edgedata["weight"] for _, _, edgedata in Gh.edges(data=True)])
-# width = np.where(width > 0.7, np.zeros(width.shape), width)
+width = np.where(width > 0.7, np.zeros(width.shape), width)
 edges = nx.draw_networkx_edges(Gh, nodes, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
 path_edges = nx.draw_networkx_nodes(Gh, nodes, nodelist=path, alpha=0.5)
 
@@ -1005,58 +1032,58 @@ ruu[:,:, -1] = 0
 lll = np.roll(arr, 1, axis=2)
 lll[:,:, 0] = 0
 
-rrr = np.roll(arr, -1, axis=2)
-rrr[:,:, -1] = 0
+# rrr = np.roll(arr, -1, axis=2)
+# rrr[:,:, -1] = 0
 
-ldd = np.roll(arr, (-1, 1), axis=(1, 2))
-ldd[:, -1] = 0
-ldd[:,:, 0] = 0
+# ldd = np.roll(arr, (-1, 1), axis=(1, 2))
+# ldd[:, -1] = 0
+# ldd[:,:, 0] = 0
 
-ddd = np.roll(arr, -1, axis=1)
-ddd[:, -1] = 0
+# ddd = np.roll(arr, -1, axis=1)
+# ddd[:, -1] = 0
 
-rdd = np.roll(arr, -1, axis=(1, 2))
-rdd[:, -1] = 0
-rdd[:,:, -1] = 0
+# rdd = np.roll(arr, -1, axis=(1, 2))
+# rdd[:, -1] = 0
+# rdd[:,:, -1] = 0
 
-lui = np.roll(arr, (-1, 1, 1), axis=(0, 1, 2))
-lui[-1] = 0
-lui[:, 0] = 0
-lui[:,:, 0] = 0
+# lui = np.roll(arr, (-1, 1, 1), axis=(0, 1, 2))
+# lui[-1] = 0
+# lui[:, 0] = 0
+# lui[:,:, 0] = 0
 
-uui = np.roll(arr, (-1, 1), axis=(0,1))
-uui[-1] = 0
-uui[:, 0] = 0
+# uui = np.roll(arr, (-1, 1), axis=(0,1))
+# uui[-1] = 0
+# uui[:, 0] = 0
 
-rui = np.roll(arr, (-1, 1, -1), axis=(0, 1, 2))
-rui[-1] = 0
-rui[:, 0] = 0
-rui[:,:, -1] = 0
+# rui = np.roll(arr, (-1, 1, -1), axis=(0, 1, 2))
+# rui[-1] = 0
+# rui[:, 0] = 0
+# rui[:,:, -1] = 0
 
-lli = np.roll(arr, (-1, 1), axis=(0,2))
-lli[-1] = 0
-lli[:,:, 0] = 0
+# lli = np.roll(arr, (-1, 1), axis=(0,2))
+# lli[-1] = 0
+# lli[:,:, 0] = 0
 
-rri = np.roll(arr, -1, axis=(0,2))
-rri[-1] = 0
-rri[:,:, -1] = 0
+# rri = np.roll(arr, -1, axis=(0,2))
+# rri[-1] = 0
+# rri[:,:, -1] = 0
 
-ldi = np.roll(arr, (-1, -1, 1), axis=(0, 1, 2))
-ldi[-1] = 0
-ldi[:, -1] = 0
-ldi[:,:, 0] = 0
+# ldi = np.roll(arr, (-1, -1, 1), axis=(0, 1, 2))
+# ldi[-1] = 0
+# ldi[:, -1] = 0
+# ldi[:,:, 0] = 0
 
-ddi = np.roll(arr, -1, axis=(0,1))
-ddi[-1] = 0
-ddi[:, -1] = 0
+# ddi = np.roll(arr, -1, axis=(0,1))
+# ddi[-1] = 0
+# ddi[:, -1] = 0
 
-rdi = np.roll(arr, -1, axis=(0, 1, 2))
-rdi[-1] = 0
-rdi[:,:, -1] = 0
-rdi[:, -1] = 0
+# rdi = np.roll(arr, -1, axis=(0, 1, 2))
+# rdi[-1] = 0
+# rdi[:,:, -1] = 0
+# rdi[:, -1] = 0
 
-iii = np.roll(arr, -1, axis=0)
-iii[-1] = 0
+# iii = np.roll(arr, -1, axis=0)
+# iii[-1] = 0
 
 ```
 
@@ -1075,19 +1102,6 @@ w.add_image(luu)
 w.add_image(uuu)
 w.add_image(ruu)
 w.add_image(lll)
-w.add_image(rrr)
-w.add_image(ldd)
-w.add_image(ddd)
-w.add_image(rdd)
-w.add_image(lui)
-w.add_image(uui)
-w.add_image(rui)
-w.add_image(lli)
-w.add_image(rri)
-w.add_image(ldi)
-w.add_image(ddi)
-w.add_image(rdi)
-w.add_image(iii)
 ```
 
 Слайсы
@@ -1104,8 +1118,8 @@ ddo_crop = (slice(1, None), slice(None, -1))
 ldo_crop = (slice(1, None), slice(1, None), slice(None, -1))
 ruo_crop = (slice(1, None), slice(None, -1), slice(1, None))
 
-rro_crop = (slice(1, None), slice(None), slice(1, None))
-llo_crop = (slice(1, None), slice(None), slice(None, -1))
+rro_crop = (slice(1, None), slice(None), slice(None, -1))
+llo_crop = (slice(1, None), slice(None), slice(1, None))
 
 
 luu_crop = (slice(None), slice(1, None), slice(1, None))
@@ -1117,8 +1131,8 @@ ddd_crop = (slice(None), slice(None, -1))
 ldd_crop = (slice(None), slice(1, None), slice(None, -1))
 ruu_crop = (slice(None), slice(None, -1), slice(1, None))
 
-rrr_crop = (slice(None), slice(None), slice(1, None))
-lll_crop = (slice(None), slice(None), slice(None, -1))
+rrr_crop = (slice(None), slice(None), slice(None, -1))
+lll_crop = (slice(None), slice(None), slice(1, None))
 
 lui_crop = (slice(None, -1), slice(1, None), slice(1, None))
 rdi_crop = (slice(None, -1), slice(None, -1), slice(None, -1))
@@ -1129,8 +1143,8 @@ ddi_crop = (slice(None, -1), slice(None, -1))
 ldi_crop = (slice(None, -1), slice(1, None), slice(None, -1))
 rui_crop = (slice(None, -1), slice(None, -1), slice(1, None))
 
-rri_crop = (slice(None, -1), slice(None), slice(1, None))
-lli_crop = (slice(None, -1), slice(None), slice(None, -1))
+rri_crop = (slice(None, -1), slice(None), slice(None, -1))
+lli_crop = (slice(None, -1), slice(None), slice(1, None))
 
 iii_crop = (slice(None, -1))
 ```
@@ -1157,45 +1171,45 @@ idxs_ = [(i, j, k) for i, j, k in idxs.reshape((shape[0]*shape[1]*shape[2], 3))]
 Расчет индексов занимает слишком много места поэтому здесь только список 
 
 ```{python}
-# idx_ooo = [(i, j, k) for i, j, k in idxs[ooo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+idx_ooo = idxs[ooo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))
 
-# idx_luo = [(i, j, k) for i, j, k in idxs[luo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_rdo = [(i, j, k) for i, j, k in idxs[rdo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_luo = idxs[luo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
+idx_rdo = idxs[rdo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_uuo = [(i, j, k) for i, j, k in idxs[uuo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
-# idx_ddo = [(i, j, k) for i, j, k in idxs[ddo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+idx_uuo = idxs[uuo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))
+idx_ddo = idxs[ddo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))
 
-# idx_ruo = [(i, j, k) for i, j, k in idxs[ruo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_ldo = [(i, j, k) for i, j, k in idxs[ldo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_ruo = idxs[ruo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
+idx_ldo = idxs[ldo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_llo = [(i, j, k) for i, j, k in idxs[llo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
-# idx_rro = [(i, j, k) for i, j, k in idxs[rro_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+idx_llo = idxs[llo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))
+idx_rro = idxs[rro_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))
 
-# idx_luu = [(i, j, k) for i, j, k in idxs[luu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_rdd = [(i, j, k) for i, j, k in idxs[rdd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+idx_luu = idxs[luu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))
+idx_rdd = idxs[rdd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_uuu = [(i, j, k) for i, j, k in idxs[uuu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
-# idx_ddd = [(i, j, k) for i, j, k in idxs[ddd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+idx_uuu = idxs[uuu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))
+idx_ddd = idxs[ddd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))
 
-# idx_ruu = [(i, j, k) for i, j, k in idxs[ruu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_ldd = [(i, j, k) for i, j, k in idxs[ldd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+idx_ruu = idxs[ruu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))
+idx_ldd = idxs[ldd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_lll = [(i, j, k) for i, j, k in idxs[lll_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
-# idx_rrr = [(i, j, k) for i, j, k in idxs[rrr_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+idx_lll = idxs[lll_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))
+idx_rrr = idxs[rrr_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))
 
-# idx_lui = [(i, j, k) for i, j, k in idxs[lui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_rdi = [(i, j, k) for i, j, k in idxs[rdi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_lui = idxs[lui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
+idx_rdi = idxs[rdi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_uui = [(i, j, k) for i, j, k in idxs[uui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
-# idx_ddi = [(i, j, k) for i, j, k in idxs[ddi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+idx_uui = idxs[uui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))
+idx_ddi = idxs[ddi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))
 
-# idx_rui = [(i, j, k) for i, j, k in idxs[rui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-# idx_ldi = [(i, j, k) for i, j, k in idxs[ldi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+idx_rui = idxs[rui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
+idx_ldi = idxs[ldi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))
 
-# idx_lli = [(i, j, k) for i, j, k in idxs[lli_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
-# idx_rri = [(i, j, k) for i, j, k in idxs[rri_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+idx_lli = idxs[lli_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))
+idx_rri = idxs[rri_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))
 
-# idx_iii = [(i, j, k) for i, j, k in idxs[iii_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+idx_iii = idxs[iii_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))
 ```
 
 Расчет весов и создание графа
@@ -1206,175 +1220,111 @@ nodes3 = {}
 ```
 
 ```{python}
-nodes3 = {n:n for n in idxs_}
-```
-
-```{python}
-def calc_edges(arr1, arr2, crop, idx1, idx2):
+def calc_edges3d(arr1, arr2, crop, index1, index2):
     weights = 1 - weight_of_arr(arr1, arr2)
-    weight = weights[crop].reshape((len(idx1),))
-    return zip(idx1, idx2, weight)
+    weight = weights[crop].ravel()
+    idx1 = [(i, j, k) for i, j, k in index1[weight<0.7]]
+    idx2 = [(i, j, k) for i, j, k in index2[weight<0.7]]
+    return zip(idx1, idx2, weight[weight<0.7])
 ```
 
 ```{python}
-idx_ooo = [(i, j, k) for i, j, k in idxs[ooo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
-idx_iii = [(i, j, k) for i, j, k in idxs[iii_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, ooo, ooo_crop, idx_ooo, idx_iii))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, iii, iii_crop, idx_iii, idx_ooo))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, ooo, ooo_crop, idx_ooo, idx_iii))
-# %time G3.add_weighted_edges_from(calc_edges(arr, iii, iii_crop, idx_iii, idx_ooo))
-
-del ooo
-del iii
 del idx_ooo
 del idx_iii
 
 
-idx_luo = [(i, j, k) for i, j, k in idxs[luo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-idx_rdi = [(i, j, k) for i, j, k in idxs[rdi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, luo, luo_crop, idx_luo, idx_rdi))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, rdi, rdi_crop, idx_rdi, idx_luo))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, luo, luo_crop, idx_luo, idx_rdi))
-# %time G3.add_weighted_edges_from(calc_edges(arr, rdi, rdi_crop, idx_rdi, idx_luo))
-
-del luo
-del rdi
 del idx_rdi
 del idx_luo
 
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, uuo, uuo_crop, idx_uuo, idx_ddi))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, ddi, ddi_crop, idx_ddi, idx_uuo))
 
-idx_ddi = [(i, j, k) for i, j, k in idxs[ddi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
-idx_uuo = [(i, j, k) for i, j, k in idxs[uuo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
-
-# %time G3.add_weighted_edges_from(calc_edges(arr, uuo, uuo_crop, idx_uuo, idx_ddi))
-# %time G3.add_weighted_edges_from(calc_edges(arr, ddi, ddi_crop, idx_ddi, idx_uuo))
-
-del uuo
-del ddi
 del idx_ddi
 del idx_uuo
 
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, ruo, ruo_crop, idx_ruo, idx_ldi))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, ldi, ldi_crop, idx_ldi, idx_ruo))
 
-idx_ruo = [(i, j, k) for i, j, k in idxs[ruo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-idx_ldi = [(i, j, k) for i, j, k in idxs[ldi_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-
-# %time G3.add_weighted_edges_from(calc_edges(arr, ruo, ruo_crop, idx_ruo, idx_ldi))
-# %time G3.add_weighted_edges_from(calc_edges(arr, ldi, ldi_crop, idx_ldi, idx_ruo))
-
-del ruo
-del ldi
 del idx_ldi
 del idx_ruo
 
 
-idx_llo = [(i, j, k) for i, j, k in idxs[llo_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
-idx_rri = [(i, j, k) for i, j, k in idxs[rri_crop].reshape(((shape[0]-1)*(shape[1])*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, llo, llo_crop, idx_llo, idx_rri))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, rri, rri_crop, idx_rri, idx_llo))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, llo, llo_crop, idx_llo, idx_rri))
-# %time G3.add_weighted_edges_from(calc_edges(arr, rri, rri_crop, idx_rri, idx_llo))
-
-del llo
-del rri
 del idx_rri
 del idx_llo
 
 
-idx_ldo = [(i, j, k) for i, j, k in idxs[ldo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-idx_rui = [(i, j, k) for i, j, k in idxs[rui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, ldo, ldo_crop, idx_ldo, idx_rui))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, rui, rui_crop, idx_rui, idx_ldo))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, ldo, ldo_crop, idx_ldo, idx_rui))
-# %time G3.add_weighted_edges_from(calc_edges(arr, rui, rui_crop, idx_rui, idx_ldo))
-
-del ldo
-del rui
 del idx_rui
 del idx_ldo
 
 
-idx_ddo = [(i, j, k) for i, j, k in idxs[ddo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
-idx_uui = [(i, j, k) for i, j, k in idxs[uui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, ddo, ddo_crop, idx_ddo, idx_ddo))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, uui, uui_crop, idx_uui, idx_uui))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, ddo, ddo_crop, idx_ddo, idx_ddo))
-# %time G3.add_weighted_edges_from(calc_edges(arr, uui, uui_crop, idx_uui, idx_uui))
-
-del ddo
-del uui
 del idx_uui
 del idx_ddo
 
 
-idx_rdo = [(i, j, k) for i, j, k in idxs[rdo_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
-idx_lui = [(i, j, k) for i, j, k in idxs[lui_crop].reshape(((shape[0]-1)*(shape[1]-1)*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, rdo, rdo_crop, idx_rdo, idx_lui))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, lui, lui_crop, idx_lui, idx_rdo))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, rdo, rdo_crop, idx_rdo, idx_lui))
-# %time G3.add_weighted_edges_from(calc_edges(arr, lui, lui_crop, idx_lui, idx_rdo))
-
-del rdo
-del lui
 del idx_lui
 del idx_rdo
 
 
-idx_luu = [(i, j, k) for i, j, k in idxs[luu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
-idx_rdd = [(i, j, k) for i, j, k in idxs[rdd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, luu, luu_crop, idx_luu, idx_rdd))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, rdd, rdd_crop, idx_rdd, idx_luu))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, luu, luu_crop, idx_luu, idx_rdd))
-# %time G3.add_weighted_edges_from(calc_edges(arr, rdd, rdd_crop, idx_rdd, idx_luu))
-
-del rdd
-del luu
 del idx_luu
 del idx_rdd
 
 
-idx_uuu = [(i, j, k) for i, j, k in idxs[uuu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
-idx_ddd = [(i, j, k) for i, j, k in idxs[ddd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, uuu, uuu_crop, idx_uuu, idx_ddd))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, ddd, ddd_crop, idx_ddd, idx_uuu))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, uuu, uuu_crop, idx_uuu, idx_ddd))
-# %time G3.add_weighted_edges_from(calc_edges(arr, ddd, ddd_crop, idx_ddd, idx_uuu))
-
-del ddd
-del uuu
 del idx_uuu
 del idx_ddd
 
 
-idx_ruu = [(i, j, k) for i, j, k in idxs[ruu_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
-idx_ldd = [(i, j, k) for i, j, k in idxs[ldd_crop].reshape(((shape[0])*(shape[1]-1)*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, ruu, ruu_crop, idx_ruu, idx_ldd))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, ldd, ldd_crop, idx_ldd, idx_ruu))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, ruu, ruu_crop, idx_ruu, idx_ldd))
-# %time G3.add_weighted_edges_from(calc_edges(arr, ldd, ldd_crop, idx_ldd, idx_ruu))
-
-del ldd
-del ruu
 del idx_ruu
 del idx_ldd
 
 
-idx_lll = [(i, j, k) for i, j, k in idxs[lll_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
-idx_rrr = [(i, j, k) for i, j, k in idxs[rrr_crop].reshape(((shape[0])*(shape[1])*(shape[2]-1), 3))]
+# %time G3.add_weighted_edges_from(calc_edges3d(arr, lll, lll_crop, idx_lll, idx_rrr))
+# # %time G3.add_weighted_edges_from(calc_edges3d(arr, rrr, rrr_crop, idx_rrr, idx_lll))
 
-# %time G3.add_weighted_edges_from(calc_edges(arr, lll, lll_crop, idx_lll, idx_rrr))
-# %time G3.add_weighted_edges_from(calc_edges(arr, rrr, rrr_crop, idx_rrr, idx_lll))
-
-del lll
-del rrr
 del idx_rrr
 del idx_lll
 ```
 
 ```{python}
-nx.write_weighted_edgelist(Gh, '3d_graph')
+nodes3 = {n:n for n in G3.nodes()}
 ```
 
 ```{python}
-
+nx.write_weighted_edgelist(G3, '3d_graph')
 ```
 
 ```{python}
-
+path2 = nx.shortest_path(G3, (39, 126, 96), (48, 115, 172), weight='weight')
 ```
 
 ```{python}
-nodes3
+path2
 ```
 
 ```{python}
@@ -1396,47 +1346,7 @@ w = napari.view_image(final_image)
 ```
 
 ```{python}
-xyz, props = draw_labels(G3, nodes3)
-```
-
-```{python}
-w.add_points(xyz, text=props['label'])
-```
-
-```{python}
-shapes_layer = w.add_shapes(
-        xyz,
-#         face_color='transparent',
-#         edge_color='transparent',
-        properties=props['label'],
-        name='bounding box',
-        text=text_parameters,
-    )
-```
-
-```{python}
-text_parameters = {
-    'string': 'lll{label}',
-    'size': 12,
-    'color': 'white',
-#     'anchor': 'upper_left',
-#     'translation': [-3, 0]
-}
-```
-
-```{python}
-xyz[...,2].max()
-```
-
-```{python}
-napari.view_points(
-        np.asarray([0,1]),
-#         face_color='transparent',
-#         edge_color='transparent',
-        properties={'label': 'ababab'},
-        name='bounding box',
-        text=text_parameters,
-    )
+# %time path = nx.shortest_path(G3, (39, 126, 96), (39, 136, 167), weight='weight')
 ```
 
 ```{python}
@@ -1444,25 +1354,129 @@ napari.view_points(
 ```
 
 ```{python}
-plt.figure(figsize=(10, 10))
-# plt.scatter(np.arange(0, width.shape[0]), width)
-plt.hist(width, bins=199)
-plt.ylim((0, 250))
-plt.show()
+
 ```
 
 ```{python}
-from skimage.filters import threshold_li, threshold_otsu
+xyz = draw_nodes(G3, nodes3, path2)
 ```
 
 ```{python}
-otsu, li = threshold_otsu(width), threshold_li(width)
+w.add_points(xyz, size=1)
+```
+
+```{python}
+import hessian_vectors as hv
+```
+
+```{python}
+hv.plot_from_sato(w, sato, Vf)
 ```
 
 ## Скелетонизация
 
 ```{python}
 plt.imshow(skeletonize(final_image/final_image.max(), method='lee'))
+```
+
+```{python}
+len(G3.nodes())/36000*0.1*60
+```
+
+```{python}
+230*230*80
+```
+
+```{python}
+nodes = G3.nodes()
+```
+
+```{python}
+node_coords = np.array(list(nodes.keys()))
+```
+
+```{python}
+center = (39, 126, 96)
+```
+
+```{python}
+#connected_to_center = [n for n in tqdm(node_coords) if nx.has_path(G3, center, tuple(n))]
+```
+
+```{python}
+
+```
+
+```{python}
+node_dists = np.linalg.norm(center-node_coords, axis=-1)
+```
+
+```{python}
+cutoff = np.percentile(node_dists, 99)
+cutoff
+```
+
+```{python}
+selected_nodes = node_coords[node_dists > cutoff]
+```
+
+```{python}
+selected_nodes
+```
+
+```{python}
+tuple(center)
+```
+
+```{python}
+tuple(selected_nodes[0])
+```
+
+```{python}
+paths = []
+failed = []
+
+for node in tqdm(selected_nodes):
+    try:
+        path = nx.shortest_path(G3, tuple(center), tuple(node), weight='weight')
+        paths.append(path)
+    except Exception as exc:
+        failed.append(exc)
+```
+
+```{python}
+paths[0]
+```
+
+```{python}
+def merge_paths(paths):
+    acc = set()
+    for path in paths:
+        for n in path:
+            acc.add(n)
+    return acc
+            
+```
+
+```{python}
+paths_merged = sorted(merge_paths(paths))
+```
+
+```{python}
+paths_merged
+```
+
+```{python}
+w.add_points(draw_nodes(G3, nodes3, paths_merged), size=1, edge_color='none', face_color='m')
+```
+
+```{python}
+while len(w.layers) >= 10: 
+    w.layers.pop()
+```
+
+```{python}
+
 ```
 
 ```{python}
@@ -1512,10 +1526,6 @@ sato, Vf = astro.hessian.sato3d(final_image, sigma, hessian_variant='gradient_of
 ```{python}
 from importlib import reload 
 reload(hv)
-```
-
-```{python}
-vectors3d = 
 ```
 
 ```{python}
@@ -1647,144 +1657,6 @@ hv.plot_from_sato(v, sato2, Vf)
 ```{python}
 v.add_image(trails_1)
 v.add_image(trails_2)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-## Скелетонизация
-
-
-Определение Сомы и её границ
-
-Определение узлов/пересечений 
-
-Определение центральной линии отростков последовательным перемещением по границе сомы и выделением самых ярких участков. Перемещение по вектору и снова поиск.
-
-
-```{python}
-
-```
-
-```{python}
-from skimage.morphology import skeletonize_3d, skeletonize
-```
-
-```{python}
-w = napari.view_image(final_image)
-```
-
-```{python}
-w.add_image(skeletonize_3d(final_image/final_image.max()))
-```
-
-```{python}
-w.add_image(final_image/final_image.max())
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
 ```
 
 ```{python}
