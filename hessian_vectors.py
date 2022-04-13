@@ -3,7 +3,7 @@ import numpy as np
 import astromorpho as astro
 
 
-def vectors_from_sato(data, vectors, axis=0, index=1):
+def sato2napari_vectors(data, vectors, axis=0, index=1):
     """
     *args : list
         list of arguments. Depending on their number they are parsed to::
@@ -14,15 +14,16 @@ def vectors_from_sato(data, vectors, axis=0, index=1):
     length = lengths.ravel()[::index]
 
     Vf = vectors[..., axis][..., ::-1]
-    if Vf.shape[-1] == 3:
-        ndim = 3
-        V = Vf[..., 0]
-        U = Vf[..., 1]
+    ndim = Vf.shape[-1]
+
+    if ndim not in [2, 3]:
+        return Exception('ERROR! Array of vectors should have 2 or 3 dimensions')
+
+
+    V = Vf[..., 0]
+    U = Vf[..., 1]
+    if ndim == 3:
         C = Vf[..., 2]
-    elif Vf.shape[-1] == 2:
-        ndim = 2
-        V = Vf[..., 0]
-        U = Vf[..., 1]
 
 
     if ndim == 2:
@@ -67,4 +68,3 @@ def add_hessian_vectors(viewer, vectors, length):
     viewer.add_vectors(vectors, edge_width=0.2,
                        length=1,  properties=properties,
                        edge_color='length', edge_colormap='inferno')
-    return viewer
