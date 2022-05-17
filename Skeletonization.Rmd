@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 ```
 
 ```{python}
+import cv2
 import scipy
 from scipy import ndimage as ndi
 import numpy as np
@@ -43,6 +44,10 @@ from tqdm.auto import tqdm
 import ccdb
 import astromorpho as astro
 ```
+```{python}
+from networx2napari import draw_edges, draw_nodes
+```
+
 
  
 
@@ -83,16 +88,18 @@ def count_points_paths(paths):
     return acc
 ```
 
-Считывание изображения
-
-```{python}
-
-```
+Параметры для запуска
 
 ```{python tags=c("parameters")}
 filename = '/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic'
 verbose = True
+sigma = 2
+
+# Set false to start from console
+HANDY = True
 ```
+
+Считывание изображения
 
 ```{python}
 stack, meta = ccdb.read_pic(filename)
@@ -107,12 +114,33 @@ else:
     zoom = 4
 ```
 
+clahe
+
 ```{python}
-img_noisy = ndi.zoom(stack.astype(float),(1, zoom,zoom))
+clahe = cv2.createCLAHE(clipLimit =2.0, tileGridSize=(8,8))
+```
+
+```{python}
+IMG_SHAPE = stack.shape
+stack_flat = stack.reshape((IMG_SHAPE[0], -1))
+img_flat = clahe.apply(stack_flat)
+img = img_flat.reshape(IMG_SHAPE)
+```
+
+```{python}
+plt.imshow(img.max(0), cmap='gray')
+```
+
+```{python}
+img_noisy = ndi.zoom(img.astype(float),(1, zoom,zoom))
 ```
 
 ```{python}
 plt.imshow(img_noisy.max(0), cmap='gray')
+```
+
+```{python}
+napari.view_image(img_noisy)
 ```
 
 Фильтрация изображения
@@ -123,13 +151,19 @@ from skimage.morphology import remove_small_objects
 ```
 
 ```{python}
-li = threshold_li(img_noisy)
+def filter_image(image, filter_func):
+    threshold = filter_func(image)
+    img_filt = np.where(image > threshold, image, 0)
+    binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
+    return np.where(binary_clean, img_filt, 0)
 ```
 
 ```{python}
-img_filt = np.where(img_noisy > li, img_noisy, 0)
-binary_clean = remove_small_objects(img_noisy >= li, 5, connectivity=3)
-img_clear = np.where(binary_clean, img_filt, 0)
+threshold = lambda x: 187
+```
+
+```{python}
+img_clear = filter_image(img_noisy, threshold_li)
 ```
 
 ```{python}
@@ -138,8 +172,9 @@ final_image = img_clear
 
 Матрица Гессе
 
-```{python tags=c("parameters")}
-sigma = 2
+```{python}
+if HANDY:
+    sigma = 4
 ```
 
 ```{python}
@@ -209,7 +244,7 @@ to_erose = final_image[:]
 ```
 
 ```{python}
-for i in range(5):
+for i in range(6):
     to_erose = erosion(to_erose)
 ```
 
@@ -286,10 +321,6 @@ for p1, p2, weight in G.edges(data=True):
 nodes3 = {n:n for n in G3.nodes()}
 ```
 
-```{python}
-nodes = G3.nodes()
-```
-
 Расчет путей
 
 ```{python}
@@ -308,6 +339,10 @@ np.save('{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma), np.arr
 
 ```{python}
 points = count_points_paths(paths)
+```
+
+```{python}
+np.save('{}_sigma{}_points_count'.format(os.path.basename(filename), sigma), np.array(points, dtype=object))
 ```
 
 ```{python}
@@ -335,10 +370,6 @@ to_del = []
 for point, count in points.items():
     if count == 1:
         to_del.append(point)
-```
-
-```{python}
-np.save('{}_sigma{}_points_count'.format(os.path.basename(filename), sigma), np.array(points, dtype=object))
 ```
 
 Фильтрация точек по встречаемости
@@ -410,16 +441,29 @@ plt.show()
 ```{python}
 points_mean = [k for k, v in points_count.items() if v > np.mean(vals)]
 points_li = [k for k, v in points_count.items() if v > threshold_li(vals)]
-points_log_mean = [k for k, v in points_count.items() if np.log(v) > np.mean(np.log(vals))]
-points_log_li = [k for k, v in points_count.items() if np.log(v) > threshold_li(np.log(vals))]
+# points_log_mean = [k for k, v in points_count.items() if np.log(v) > np.mean(np.log(vals))]
+# points_log_li = [k for k, v in points_count.items() if np.log(v) > threshold_li(np.log(vals))]
 ```
 
 ```{python}
 if verbose:
     w.add_points(draw_nodes(nodes3, points_mean), size=1, edge_color='transparent', face_color='m', name='filt mean')
-    w.add_points(draw_nodes(nodes3, points_li), size=1, edge_color='transparent', face_color='g', name='filt li')    
-    w.add_points(draw_nodes(nodes3, points_log_mean), size=1, edge_color='transparent', face_color='c', name='filt log mean')    
-    w.add_points(draw_nodes(nodes3, points_log_li), size=1, edge_color='transparent', face_color='r', name='filt log li')    
+    w.add_points(draw_nodes(nodes3, points_li), size=1, edge_color='transparent', face_color='g', name='filt li')
+```
+
+# Tree creation
+
+```{python}
+Gsub = G3.subgraph(points_mean)
+nodes_sub = {n:n for n in Gsub.nodes()}
+```
+
+```{python}
+props = {'weight': 1 - np.array([edgedata["weight"] for _, _, edgedata in Gsub.edges(data=True)])}
+```
+
+```{python}
+w.add_shapes(draw_edges(nodes_sub, list(Gsub.edges())), shape_type='path', edge_color='weight', edge_width=0.1, edge_colormap='inferno', properties=props)
 ```
 
 ```{python}
