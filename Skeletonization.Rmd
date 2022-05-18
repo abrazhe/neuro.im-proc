@@ -13,6 +13,11 @@ jupyter:
     name: venv
 ---
 
+<!-- #region toc=true -->
+<h1>Table of Contents<span class="tocSkip"></span></h1>
+<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-4">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-5">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.1">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.2">Определение центра</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-5.3">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-6">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-7">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-8">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Tree-creation" data-toc-modified-id="Tree-creation-9">Tree creation</a></span></li></ul></div>
+<!-- #endregion -->
+
 ```{python}
 import os
 import sys
@@ -88,7 +93,7 @@ def count_points_paths(paths):
     return acc
 ```
 
-Параметры для запуска
+# Параметры для запуска
 
 ```{python tags=c("parameters")}
 filename = '/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic'
@@ -99,7 +104,7 @@ sigma = 2
 HANDY = True
 ```
 
-Считывание изображения
+# Считывание изображения
 
 ```{python}
 stack, meta = ccdb.read_pic(filename)
@@ -143,10 +148,10 @@ plt.imshow(img_noisy.max(0), cmap='gray')
 napari.view_image(img_noisy)
 ```
 
-Фильтрация изображения
+# Фильтрация изображения
 
 ```{python}
-from skimage.filters import threshold_li
+from skimage.filters import threshold_li, threshold_minimum
 from skimage.morphology import remove_small_objects
 ```
 
@@ -154,6 +159,7 @@ from skimage.morphology import remove_small_objects
 def filter_image(image, filter_func):
     threshold = filter_func(image)
     img_filt = np.where(image > threshold, image, 0)
+    napari.view_image(image >= threshold)
     binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
     return np.where(binary_clean, img_filt, 0)
 ```
@@ -164,17 +170,23 @@ threshold = lambda x: 187
 
 ```{python}
 img_clear = filter_image(img_noisy, threshold_li)
+if HANDY:
+    img_clear = filter_image(img_noisy, threshold_minimum)
 ```
 
 ```{python}
 final_image = img_clear
 ```
 
-Матрица Гессе
+```{python}
+w = napari.view_image(final_image)
+```
+
+# Матрица Гессе
 
 ```{python}
 if HANDY:
-    sigma = 4
+    sigma = 3
 ```
 
 ```{python}
@@ -196,7 +208,7 @@ lengths = astro.enh.percentile_rescale(sato)**0.5
 vectors = np.stack((U*lengths, V*lengths, C*lengths), axis=3)
 ```
 
-Построение графа
+# Построение графа
 
 ```{python}
 crops = [((slice(1, None)), (slice(None, -1))),
@@ -230,10 +242,11 @@ for crop, acrop in tqdm(crops):
 ```
 
 ```{python}
+
 nodes3 = {n:n for n in G3.nodes()}
 ```
 
-Выделение сомы
+## Выделение сомы
 
 ```{python}
 from skimage.morphology import erosion, dilation
@@ -258,7 +271,6 @@ soma_mask = np.where(dilation(eroded), True, False)
 
 ```{python}
 if verbose:
-    w = napari.view_image(final_image)
     w.add_image(soma_mask, blending='additive', colormap='cyan')
 ```
 
@@ -266,7 +278,7 @@ if verbose:
 soma = [tuple(i) for i in idx[soma_mask]]
 ```
 
-Определение центра
+## Определение центра
 
 ```{python}
 import itertools as itt
@@ -298,7 +310,7 @@ center = tuple(map(int, np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)))
 center
 ```
 
-Добавление точек сомы в граф
+## Добавление точек сомы в граф
 
 ```{python}
 G = nx.complete_graph(soma)
@@ -321,7 +333,7 @@ for p1, p2, weight in G.edges(data=True):
 nodes3 = {n:n for n in G3.nodes()}
 ```
 
-Расчет путей
+# Расчет путей
 
 ```{python}
 # %time paths_dict = nx.single_source_dijkstra_path(G3, center)
@@ -335,7 +347,7 @@ paths = list(paths_dict.values())
 np.save('{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma), np.array(paths, dtype=object))
 ```
 
-Расчет встречаемости
+# Расчет встречаемости
 
 ```{python}
 points = count_points_paths(paths)
@@ -372,7 +384,7 @@ for point, count in points.items():
         to_del.append(point)
 ```
 
-Фильтрация точек по встречаемости
+# Фильтрация точек по встречаемости
 
 ```{python}
 from copy import copy
@@ -440,7 +452,8 @@ plt.show()
 
 ```{python}
 points_mean = [k for k, v in points_count.items() if v > np.mean(vals)]
-points_li = [k for k, v in points_count.items() if v > threshold_li(vals)]
+thr_li = threshold_li(vals)
+points_li = [k for k, v in points_count.items() if v > thr_li]
 # points_log_mean = [k for k, v in points_count.items() if np.log(v) > np.mean(np.log(vals))]
 # points_log_li = [k for k, v in points_count.items() if np.log(v) > threshold_li(np.log(vals))]
 ```
@@ -467,7 +480,31 @@ w.add_shapes(draw_edges(nodes_sub, list(Gsub.edges())), shape_type='path', edge_
 ```
 
 ```{python}
+from skimage.morphology import skeletonize, flood
+```
 
+```{python}
+skeleton = skeletonize(final_image/final_image.max())
+w.add_image(skeleton, blending='additive', colormap='cyan')
+```
+
+```{python}
+flood_mask = flood(final_image > 0, center)
+w.add_image(flood_mask, colormap='red', opacity=0.5)
+```
+
+```{python}
+img = np.where(flood_mask, final_image/final_image.max(), 0)
+skeleton_2 = skeletonize(img)
+w.add_image(skeleton_2, blending='additive', colormap='cyan')
+```
+
+```{python}
+from skimage.graph import pixel_graph
+```
+
+```{python}
+pixel_graph(skeleton)
 ```
 
 ```{python}

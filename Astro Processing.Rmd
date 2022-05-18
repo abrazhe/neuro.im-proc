@@ -38,6 +38,10 @@ from numpy.random import randn
 ```
 
 ```{python}
+from tqdm.auto import tqdm
+```
+
+```{python}
 import napari
 ```
 
@@ -181,6 +185,17 @@ import ccdb
 ```
 
 ```{python}
+def read_image(filename):
+    stack, meta = ccdb.read_pic(filename)
+    dims = ccdb.get_axes(meta)
+    if len(dims):
+        zoom = dims[0][0]/dims[-1][0]
+    else:
+        zoom = 4
+    return ndi.zoom(stack.astype(float),(1, zoom,zoom))
+```
+
+```{python}
 filename = '/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic'
 ```
 
@@ -188,6 +203,10 @@ filename = '/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic'
 stack, meta = ccdb.read_pic(filename)
 dims = ccdb.get_axes(meta)#[::-1]
 dims
+```
+
+```{python}
+stack.shape
 ```
 
 ```{python}
@@ -216,13 +235,19 @@ from skimage.morphology import remove_small_objects
 ```
 
 ```{python}
-li = threshold_li(img_noisy)
+def filter_image(image, filter_func, **kwargs):
+    threshold = filter_func(image)
+    img_filt = np.where(image > threshold, image, 0)
+    binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
+    return np.where(binary_clean, img_filt, 0)
 ```
 
 ```{python}
-img_filt = np.where(img_noisy > li, img_noisy, 0)
-binary_clean = remove_small_objects(img_noisy >= li, 5, connectivity=3)
-img_clear = np.where(binary_clean, img_filt, 0)
+
+```
+
+```{python}
+img_clear = filter_image(img_noisy, threshold_li)
 ```
 
 ### 2D
@@ -267,6 +292,10 @@ imshow(final_image, cmap='gray')
 ### 3D
 
 ```{python}
+img_clear = stack[:]
+```
+
+```{python}
 IMG_SHAPE = img_clear.shape
 ```
 
@@ -307,15 +336,57 @@ w = napari.view_image(final_image)
 ```
 
 ```{python}
-eroded = erosion(final_image)
-w.add_image(eroded, opacity=0.5, colormap='green', gamma=0.2)
-for i in range(3):
-    eroded = erosion(eroded)
-    w.add_image(eroded, opacity=0.5, colormap='green', gamma=0.2)
+to_erose = final_image[:]
 ```
 
 ```{python}
-w.add_image(dilation(eroded), opacity=0.5, colormap='green', gamma=0.2)
+for i in range(5):
+    to_erose = erosion(to_erose)
+eroded = remove_small_objects(to_erose > 0, 5, connectivity=3)
+soma_mask = np.where(dilation(eroded), True, False)
+```
+
+```{python}
+w = napari.view_image(final_image)
+w.add_image(soma_mask, blending='additive', colormap='cyan')
+```
+
+```{python}
+def soma_extraction(image):
+    for i in range(5):
+        image = erosion(image)
+    eroded = remove_small_objects(image > 0, 5, connectivity=3)
+    return np.where(dilation(eroded), True, False)
+```
+
+```{python}
+data_path = '/home/levtg/astro-morpho/data/'
+```
+
+```{python}
+# names = !ls $data_path/*.pic
+names = [name for name in names if not 'hm' in name or not 'red' in name]
+```
+
+```{python}
+len(names)/5
+```
+
+```{python}
+plt.im
+
+```
+
+```{python}
+w = napari.view_image(np.array([[0]]))
+for imagename in tqdm(names[::10]):
+    stack = read_image(imagename)
+    image = filter_image(stack, threshold_li)
+    eimage = np.where(image>0, np.exp(image), 0)
+    w.add_image(image, colormap='magenta', name=os.path.basename(imagename))
+    soma = soma_extraction(eimage)
+#     soma = filter_image(e_image, lambda x: np.max(x)*0.8)
+    w.add_image(soma, blending='additive', colormap='cyan', name=os.path.basename(imagename) + '_soma')
 ```
 
 # Tree segmentation
@@ -414,7 +485,7 @@ def weight_of(a, b):
 ### 2d
 
 ```{python}
-sigma = 2
+sigma = 1
 ```
 
 ```{python}
@@ -500,7 +571,7 @@ plt.tight_layout()
 Построение пути
 
 ```{python}
-paths = nx.all_shortest_paths(G, (3, 56), (23, 28), weight='weight')
+paths = nx.all_shortest_paths(G, (3, 50), (23, 20), weight='weight')
 ```
 
 ```{python}
@@ -1074,6 +1145,13 @@ w.add_shapes(xyz, shape_type='path', edge_color='r', edge_width=0.1)
 # Скелетонизация
 
 ```{python}
+#2d
+G3 = G
+nodes3 = {n:n for n in G3.nodes()}
+w = napari.view_image(final_image)
+```
+
+```{python}
 len(G3.nodes())/36000*0.1*60
 ```
 
@@ -1089,7 +1167,9 @@ node_coords = np.array(list(nodes.keys()))
 # center = (39, 126, 96)
 # center = (29, 109, 101)
 # center = (22, 123, 122)
-center = (50, 108, 98)
+# center = (50, 108, 98)
+#2d
+center = (23, 20)
 ```
 
 ```{python}
@@ -1118,14 +1198,19 @@ selected_nodes.shape
 ```
 
 ```{python}
-paths = []
-failed = []
-for node in tqdm(nodes):
-    try:
-        path = nx.shortest_path(G3, tuple(center), tuple(node), weight='weight')
-        paths.append(path)
-    except Exception as exc:
-        failed.append(exc)
+# paths = []
+# failed = []
+# for node in tqdm(nodes):
+#     try:
+#         path = nx.shortest_path(G3, tuple(center), tuple(node), weight='weight')
+#         paths.append(path)
+#     except Exception as exc:
+#         failed.append(exc)
+```
+
+```{python}
+paths_dict = nx.single_source_dijkstra_path(G3, center)
+paths = list(paths_dict.values())
 ```
 
 ```{python}
@@ -1215,7 +1300,7 @@ vals = np.asarray(list(points_count.values()))
 ```
 
 ```{python}
-qstack = np.zeros(arr.shape[:-1])
+qstack = np.zeros(vectors.shape[:-1])
 for loc, val in points_count.items():
     qstack[loc] = np.log(val)
 ```
@@ -1273,206 +1358,78 @@ import anytree as at
 ```
 
 ```{python}
-merged = at.Node(center)
+tree = G3.subgraph(points_count)
+leaves = {n:n for n in G3.nodes()}
+```
+
+```{python cell_style="split"}
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in tree.edges(data=True)])
+# width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(tree, leaves, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+# labels = nx.draw_networkx_labels(G, nodes, font_size=6)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
+```
+
+```{python cell_style="split"}
+plt.figure(figsize=(30, 30))
+width = np.array([edgedata["weight"] for _, _, edgedata in G3.edges(data=True)])
+# width = np.where(width > 0.7, np.zeros(width.shape), width)
+edges = nx.draw_networkx_edges(G3, nodes3, width=width*5, edge_cmap = plt.cm.plasma, edge_color=width)
+# labels = nx.draw_networkx_labels(G, nodes, font_size=6)
+
+plt.setp(plt.gca(), xticks=[], yticks=[])
+plt.colorbar(edges, ax=plt.gca())
+plt.tight_layout()
 ```
 
 ```{python}
-for path in tqdm(paths):
-    cnode = merged
-    for n in path:
-        if cnode == n:
-            print('.')
-            continue
-        elif n in cnode.children:
-            cnode = cnode.children[n]
-        else:
-            new_node = at.Node(n, parent=cnode)
-            cnode = new_node
+def draw_edges(pos, edgelist):
+    edges = np.asarray([[pos[n1], pos[n2]] for n1, n2 in edgelist])
+    return edges
 ```
 
 ```{python}
-
+w.add_shapes(draw_edges(leaves, list(tree.edges())), shape_type='path', edge_color='red', edge_width=0.1)
 ```
 
 ```{python}
-for path in paths[::50]:
-    w.add_shapes(draw_nodes(G3, nodes3, path[:-1]), shape_type='path', edge_color='red', edge_width=0.1)
-```
-
-# 3Dvectors
-
-```{python}
-import hessian_vectors as hv
-import napari
-import skimage.feature as skf
-```
-
-```{python}
-from numba import jit
-```
-
-```{python}
-sigma = 1
-```
-
-```{python}
-sato, Vf = astro.hessian.sato3d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-```
-
-```{python}
-from importlib import reload 
-reload(hv)
-```
-
-```{python}
-sato2 = np.where((sato**0.5) < 0.3, np.zeros(sato.shape), sato)
-```
-
-```{python}
-viewer = napari.view_image(final_image)
-hv.plot_from_sato(viewer, sato2, Vf)
-napari.run()
+# nx.algorithms.threshold.find_threshold_graph(G)
 ```
 
 ```{python}
 
 ```
 
+# Classic Skeletonization
+
 ```{python}
-w = napari.view_image(final_image)
-
-sigma = 1
-sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-hv.plot_from_sato(w, sato, Vf)
-
-sigma = 2
-sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-hv.plot_from_sato(w, sato, Vf)
-
-sigma = 3
-sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-hv.plot_from_sato(w, sato, Vf)
-
-sigma = 4
-sato, Vf = astro.hessian.sato2d(final_image, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
-hv.plot_from_sato(w, sato, Vf)
-
-napari.run()
+skel_img = filter_image(img_noisy, lambda x: 180)
 ```
 
 ```{python}
-
+v = napari.view_image(skel_img)
 ```
 
 ```{python}
-
+from skimage.morphology import skeletonize
+skeleton = skeletonize(skel_img/skel_img.max())
 ```
 
 ```{python}
-
+v.add_image(skeleton, blending='additive', colormap='cyan')
 ```
 
 ```{python}
-w.add_image(final_image)
+v.add_image(final_image, colormap='magenta')
 ```
 
 ```{python}
-from skimage.filters import ridges as skridges
-@jit
-def vesselness(img, sigma,cc=2.,beta=0.5):
-#     H = skf.hessian_matrix(img,sigma)
-#     H_norm = np.array(H)*sigma**2
-#     Hl = skf.hessian_matrix_eigvals(H_norm)
-    Hl = skridges.compute_hessian_eigenvalues(img, sigma)
-    sh = img.shape
-    v = np.zeros(sh)
-    for r in range(sh[0]):
-        for c in range(sh[1]):
-            for h in range(sh[2]):
-                l1,l2 = Hl[0][r,c, h],Hl[1][r,c, h]
-
-                if abs(l2) < abs(l1):
-                    l1,l2 = l2,l1
-                s = np.sqrt(l1**2 + l2**2)
-
-                if l2 >= 0:
-                    v[r,c, h] = 0
-                else:
-                    Rb = l1/l2
-                    v[r,c, h] =  (1 - np.exp(-s**2/(2*cc**2)))*np.exp(-(Rb**2)/(2*beta**2))
-                    #v[r,c] =  (1 - exp(-(0**2)/(2*c**2)))
-                    pass
-    return v
-
-def multiscale_vesselness(img, sigma_start, sigma_stop, nlevels=50, reduce_fn=np.max):
-    return reduce_fn([vesselness(img, sigma)*sigma**2 for sigma in np.linspace(sigma_start,sigma_stop, nlevels)],0)
-```
-
-```{python}
-ves = multiscale_vesselness(final_image, 0.5, 3)
-w.add_image(ves)
-```
-
-```{python}
-ves = multiscale_vesselness(final_image, 0.5, 3)
-w = napari.view_image(ves)
-```
-
-```{python}
-from skimage.filters import ridges as skridges
-# skridges.compute_hessian_eigenvalues(final_image, 1)
-```
-
-```{python}
-import astromorpho.tsnails as ts
-```
-
-```{python}
-# %time trails = ts.turbosnail_vesselness(img_noisy, 0.5)
-```
-
-```{python}
-v = napari.view_image(final_image)
-v.add_image(trails)
-napari.run()
-```
-
-```{python}
-sato, Vf = astro.hessian.sato3d(final_image, 2, hessian_variant='gradient_of_smoothed', return_vectors=True)
-```
-
-```{python}
-hv.plot_from_sato(v, sato2, Vf)
-```
-
-```{python}
-# %time trails_1 = ts.turbosnail_vesselness(img_noisy, 1)
-# %time trails_2 = ts.turbosnail_vesselness(img_noisy, 2)
-```
-
-```{python}
-v.add_image(trails_1)
-v.add_image(trails_2)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
+skeleton = skeletonize(final_image/final_image.max(), method='lee')
+v.add_image(skeleton, blending='additive', colormap='cyan')
 ```
 
 ```{python}
