@@ -15,7 +15,7 @@ jupyter:
 
 <!-- #region toc=true -->
 <h1>Table of Contents<span class="tocSkip"></span></h1>
-<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-4">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-5">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.1">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.2">Определение центра</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-5.3">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-6">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-7">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-8">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Tree-creation" data-toc-modified-id="Tree-creation-9">Tree creation</a></span></li></ul></div>
+<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-4">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-5">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.1">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.2">Определение центра</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-5.3">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-6">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-7">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-8">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Построение-дерева" data-toc-modified-id="Построение-дерева-9">Построение дерева</a></span></li><li><span><a href="#Многомасштабный-гессиан" data-toc-modified-id="Многомасштабный-гессиан-10">Многомасштабный гессиан</a></span></li></ul></div>
 <!-- #endregion -->
 
 ```{python}
@@ -77,11 +77,6 @@ def calc_edges(arr1, arr2, index1, index2):
 ```
 
 ```{python}
-def draw_nodes(pos, nodelist):
-    return np.asarray([pos[n] for n in nodelist])
-```
-
-```{python}
 def count_points_paths(paths):
     acc = {}
     for path in paths:
@@ -102,6 +97,9 @@ sigma = 2
 
 # Set false to start from console
 HANDY = True
+
+# Set true to save output
+OUT = False
 ```
 
 # Считывание изображения
@@ -159,7 +157,6 @@ from skimage.morphology import remove_small_objects
 def filter_image(image, filter_func):
     threshold = filter_func(image)
     img_filt = np.where(image > threshold, image, 0)
-    napari.view_image(image >= threshold)
     binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
     return np.where(binary_clean, img_filt, 0)
 ```
@@ -179,7 +176,7 @@ final_image = img_clear
 ```
 
 ```{python}
-w = napari.view_image(final_image)
+w = napari.view_image(final_image, colormap='magenta')
 ```
 
 # Матрица Гессе
@@ -318,6 +315,7 @@ G = nx.complete_graph(soma)
 
 ```{python}
 nx.set_edge_attributes(G, 0.7, name='weight')
+nx.set_edge_attributes(G, 'soma', name='area')
 ```
 
 ```{python}
@@ -344,7 +342,8 @@ paths = list(paths_dict.values())
 ```
 
 ```{python}
-np.save('{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma), np.array(paths, dtype=object))
+if OUT:
+    np.save('{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma), np.array(paths, dtype=object))
 ```
 
 # Расчет встречаемости
@@ -354,7 +353,8 @@ points = count_points_paths(paths)
 ```
 
 ```{python}
-np.save('{}_sigma{}_points_count'.format(os.path.basename(filename), sigma), np.array(points, dtype=object))
+if OUT:
+    np.save('{}_sigma{}_points_count'.format(os.path.basename(filename), sigma), np.array(points, dtype=object))
 ```
 
 ```{python}
@@ -460,11 +460,11 @@ points_li = [k for k, v in points_count.items() if v > thr_li]
 
 ```{python}
 if verbose:
-    w.add_points(draw_nodes(nodes3, points_mean), size=1, edge_color='transparent', face_color='m', name='filt mean')
+    w.add_points(draw_nodes(nodes3, points_mean), size=1, edge_color='transparent', face_color='c', name='filt mean')
     w.add_points(draw_nodes(nodes3, points_li), size=1, edge_color='transparent', face_color='g', name='filt li')
 ```
 
-# Tree creation
+# Построение дерева
 
 ```{python}
 Gsub = G3.subgraph(points_mean)
@@ -505,6 +505,84 @@ from skimage.graph import pixel_graph
 
 ```{python}
 pixel_graph(skeleton)
+```
+
+```{python}
+w.add_image(img_noisy)
+```
+
+```{python}
+def localize_graph_points(G, point_loc, nodes=None, dist=1):
+    if nodes is None:
+        nodes = G.nodes()
+    node_coords = np.array(nodes.keys())
+    node_dists = np.linalg.norm(point_loc-node_coords, axis=-1)
+    suit_points = [tuple(n) for n in node_coords[node_dists < dist]]
+    return suit_points
+```
+
+Если получится выделять множство узлов не через for, с помощью маски, то можно переделать функцию получше
+
+```{python}
+def set_graph_area(G, area_mask, out=True, set_name=None):
+    nodes = G.nodes(data=True)
+    node_coords = np.array(nodes.keys())
+    for node, _ in nodes:
+        if area_mask[tuple(node)] and not have key area:
+            if set_name is not None:
+                nx.set_node_attributes(G, {node: {'area':set_name}})
+    if out:
+        return G.subgraph_view()
+            
+    
+```
+
+```{python}
+
+```
+
+# Многомасштабный гессиан
+
+```{python}
+
+```
+
+```{python}
+def vesselness(img, sigma, cc=2., beta=0.5):
+    #H = skf.hessian_matrix(img,sigma)
+    #Hl = skf.hessian_matrix_eigvals(H)
+    Hl = skridges.compute_hessian_eigenvalues(img, sigma)
+    sh = img.shape
+    v = np.zeros(sh)
+    for r in range(sh[0]):
+        for c in range(sh[1]):
+            for h in range(sh[2]):
+                l1,l2,l3 = Hl[0][r,c,h],Hl[1][r,c,h]
+
+                if abs(l2) < abs(l1):
+                    l1,l2 = l2,l1
+                s = np.sqrt(l1**2 + l2**2 + l3**2)
+
+                if l2 >= 0:
+                    v[r,c] = 0
+                else:
+                    Rb = l1/l2
+                    v[r,c] =  (1 - np.exp(-s**2/(2*cc**2)))*np.exp(-(Rb**2)/(2*beta**2))
+                    #v[r,c] =  (1 - exp(-(0**2)/(2*c**2)))
+                    pass
+    return v
+
+def multiscale_vesselness(img, sigma_start, sigma_stop, nlevels=50, reduce_fn=np.max):
+    return reduce_fn([vesselness(img, sigma)*sigma**2 for sigma in np.linspace(sigma_start,sigma_stop, nlevels)],0)
+
+```
+
+```{python}
+
+```
+
+```{python}
+
 ```
 
 ```{python}
