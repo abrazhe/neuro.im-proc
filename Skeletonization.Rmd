@@ -15,7 +15,7 @@ jupyter:
 
 <!-- #region toc=true -->
 <h1>Table of Contents<span class="tocSkip"></span></h1>
-<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-4">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-5">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.1">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.2">Определение центра</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-5.3">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-6">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-7">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-8">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Построение-дерева" data-toc-modified-id="Построение-дерева-9">Построение дерева</a></span></li><li><span><a href="#Многомасштабный-гессиан" data-toc-modified-id="Многомасштабный-гессиан-10">Многомасштабный гессиан</a></span></li></ul></div>
+<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-4">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5">Определение центра</a></span></li><li><span><a href="#Выделение-толстых-отростков" data-toc-modified-id="Выделение-толстых-отростков-6">Выделение толстых отростков</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-7">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-8">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-8.1">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-9">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-10">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-11">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Выделение-тонких-веток" data-toc-modified-id="Выделение-тонких-веток-12">Выделение тонких веток</a></span></li><li><span><a href="#Объединение" data-toc-modified-id="Объединение-13">Объединение</a></span><ul class="toc-item"><li><span><a href="#Выделение-крайних-точек" data-toc-modified-id="Выделение-крайних-точек-13.1">Выделение крайних точек</a></span></li><li><span><a href="#Ближайшие-точки-скелета" data-toc-modified-id="Ближайшие-точки-скелета-13.2">Ближайшие точки скелета</a></span></li><li><span><a href="#Добавление-соединений" data-toc-modified-id="Добавление-соединений-13.3">Добавление соединений</a></span></li></ul></li><li><span><a href="#Многомасштабный-гессиан" data-toc-modified-id="Многомасштабный-гессиан-14">Многомасштабный гессиан</a></span></li></ul></div>
 <!-- #endregion -->
 
 ```{python}
@@ -143,7 +143,7 @@ plt.imshow(img_noisy.max(0), cmap='gray')
 ```
 
 ```{python}
-napari.view_image(img_noisy)
+# napari.view_image(img_noisy)
 ```
 
 # Фильтрация изображения
@@ -168,7 +168,8 @@ threshold = lambda x: 187
 ```{python}
 img_clear = filter_image(img_noisy, threshold_li)
 if HANDY:
-    img_clear = filter_image(img_noisy, threshold_minimum)
+    pass
+#     img_clear = filter_image(img_noisy, threshold_minimum)
 ```
 
 ```{python}
@@ -179,11 +180,181 @@ final_image = img_clear
 w = napari.view_image(final_image, colormap='magenta')
 ```
 
+# Выделение сомы
+
+```{python}
+from skimage.morphology import erosion, dilation
+```
+
+```{python}
+to_erose = final_image[:]
+```
+
+```{python}
+for i in range(6):
+    to_erose = erosion(to_erose)
+```
+
+```{python}
+eroded = remove_small_objects(to_erose > 0, 5, connectivity=3)
+```
+
+```{python}
+soma_mask = np.where(dilation(eroded), True, False)
+```
+
+```{python}
+if verbose:
+    w.add_image(soma_mask, blending='additive', colormap='cyan')
+```
+
+```{python}
+soma = [tuple(i) for i in idx[soma_mask]]
+```
+
+# Определение центра
+
+```{python}
+import itertools as itt
+```
+
+```{python}
+def percentile_rescale(arr, plow=1, phigh=99.5):
+    low, high = np.percentile(arr, (plow, phigh))
+    if low == high:
+        return np.zeros_like(arr)
+    else:
+        return np.clip((arr-low)/(high-low), 0, 1)
+```
+
+```{python}
+zstack = final_image[:]
+```
+
+```{python}
+# %time X = np.array(list(itt.product(*map(range, zstack.shape))))
+```
+
+```{python}
+weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
+```
+
+```{python}
+center = tuple(map(int, np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)))
+center
+```
+
+# Выделение толстых отростков
+
+```{python}
+branches = filter_image(img_noisy, threshold_minimum)
+img_branch = branches/branches.max()
+```
+
+```{python}
+from skimage.morphology import skeletonize, flood
+```
+
+```{python}
+flood_mask = flood(img_branch > 0, center)
+if verbose:
+    w.add_image(flood_mask, colormap='red', opacity=0.5)
+```
+
+```{python}
+img = np.where(flood_mask, img_branch, 0)
+skeleton = skeletonize(img)
+if verbose:
+    w.add_image(skeleton, blending='additive', colormap='cyan')
+```
+
+```{python}
+from skimage.graph import pixel_graph
+```
+
+```{python}
+w_branch_mask = skeleton == 255
+```
+
+TEST AREA START
+
+```{python}
+def localize_graph_points(G, point_loc, nodes=None, dist=1):
+    if nodes is None:
+        nodes = G.nodes()
+    node_coords = np.array(nodes.keys())
+    node_dists = np.linalg.norm(point_loc-node_coords, axis=-1)
+    suit_points = [tuple(n) for n in node_coords[node_dists < dist]]
+    return suit_points
+```
+
+```{python}
+def set_graph_area(G, area_mask, out=True, set_name=None):
+    coords = np.array(G.nodes())
+    node_check = area_mask[coords[:,0], coords[:,1], coords[:,2]]
+    selected_nodes = [tuple(n) for n in coords[node_check]]
+   
+    if set_name is not None:
+        nx.set_node_attributes(G, {tuple(n): {'area':set_name} for n in coords[node_check]})
+                
+    if out:
+        return selected_nodes
+```
+
+Нужна функция для выделения сабграфа (библиотечная делает ридонли). Функция ниже из доков. Требует осмысления и доработки.
+
+```{python}
+def create_subgraph(G, nodes):
+    # Create a subgraph SG based on a (possibly multigraph) G
+    SG = G.__class__()
+    SG.add_nodes_from((n, G.nodes[n]) for n in largest_wcc)
+    if SG.is_multigraph():
+        SG.add_edges_from((n, nbr, key, d)
+            for n, nbrs in G.adj.items() if n in largest_wcc
+            for nbr, keydict in nbrs.items() if nbr in largest_wcc
+            for key, d in keydict.items())
+    else:
+        SG.add_edges_from((n, nbr, d)
+            for n, nbrs in G.adj.items() if n in largest_wcc
+            for nbr, d in nbrs.items() if nbr in largest_wcc)
+    SG.graph.update(G.graph)
+    return SG
+```
+
+```{python}
+# nodes= G3.nodes()
+# c = np.array(nodes)
+# sc = soma_mask[c[:,0], c[:,1], c[:,2]]
+# soma_nodes = [tuple(n) for n in c[sc]]
+# G3.remove_nodes_from(soma_nodes)
+
+```
+
+```{python}
+# Gsub2 = G3.subgraph(points_mean)
+# new_nodes = {n:n for n in Gsub2.nodes()}
+```
+
+```{python}
+# Gsub2 = G3.subgraph(soma_nodes)
+# new_nodes = {n:n for n in Gsub2.nodes()}
+# props = {'weight': 1 - np.array([edgedata["weight"] for _, _, edgedata in Gsub2.edges(data=True)])}
+# w.add_shapes(draw_edges(new_nodes, list(Gsub2.edges())), 
+#              shape_type='path', 
+#              edge_color='weight', 
+#              edge_width=0.1, 
+#              edge_colormap='inferno', 
+#              properties=props)
+```
+
+TEST AREA END
+
+
 # Матрица Гессе
 
 ```{python}
 if HANDY:
-    sigma = 3
+    sigma = 2
 ```
 
 ```{python}
@@ -235,76 +406,7 @@ nodes3 = {}
 
 ```{python}
 for crop, acrop in tqdm(crops):
-    G3.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop]))
-```
-
-```{python}
-
-nodes3 = {n:n for n in G3.nodes()}
-```
-
-## Выделение сомы
-
-```{python}
-from skimage.morphology import erosion, dilation
-```
-
-```{python}
-to_erose = final_image[:]
-```
-
-```{python}
-for i in range(6):
-    to_erose = erosion(to_erose)
-```
-
-```{python}
-eroded = remove_small_objects(to_erose > 0, 5, connectivity=3)
-```
-
-```{python}
-soma_mask = np.where(dilation(eroded), True, False)
-```
-
-```{python}
-if verbose:
-    w.add_image(soma_mask, blending='additive', colormap='cyan')
-```
-
-```{python}
-soma = [tuple(i) for i in idx[soma_mask]]
-```
-
-## Определение центра
-
-```{python}
-import itertools as itt
-```
-
-```{python}
-def percentile_rescale(arr, plow=1, phigh=99.5):
-    low, high = np.percentile(arr, (plow, phigh))
-    if low == high:
-        return np.zeros_like(arr)
-    else:
-        return np.clip((arr-low)/(high-low), 0, 1)
-```
-
-```{python}
-zstack = final_image[:]
-```
-
-```{python}
-# %time X = np.array(list(itt.product(*map(range, zstack.shape))))
-```
-
-```{python}
-weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
-```
-
-```{python}
-center = tuple(map(int, np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)))
-center
+     G3.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop]))
 ```
 
 ## Добавление точек сомы в граф
@@ -464,7 +566,7 @@ if verbose:
     w.add_points(draw_nodes(nodes3, points_li), size=1, edge_color='transparent', face_color='g', name='filt li')
 ```
 
-# Построение дерева
+# Выделение тонких веток
 
 ```{python}
 Gsub = G3.subgraph(points_mean)
@@ -480,65 +582,95 @@ w.add_shapes(draw_edges(nodes_sub, list(Gsub.edges())), shape_type='path', edge_
 ```
 
 ```{python}
-from skimage.morphology import skeletonize, flood
+c = np.array(Gsub.nodes())
 ```
 
 ```{python}
-skeleton = skeletonize(final_image/final_image.max())
-w.add_image(skeleton, blending='additive', colormap='cyan')
+graph_mask = np.full(final_image.shape, False)
+graph_mask[c[:,0], c[:,1], c[:,2]] = True
 ```
 
 ```{python}
-flood_mask = flood(final_image > 0, center)
-w.add_image(flood_mask, colormap='red', opacity=0.5)
+th_branch_mask = np.full(final_image.shape, False)
+th_branch_mask[c[:,0], c[:,1], c[:,2]] = True
+th_branch_mask[flood_mask] = False
 ```
 
 ```{python}
-img = np.where(flood_mask, final_image/final_image.max(), 0)
-skeleton_2 = skeletonize(img)
-w.add_image(skeleton_2, blending='additive', colormap='cyan')
+th_branch_mask = remove_small_objects(th_branch_mask, 5, connectivity=3)
+```
+
+# Объединение
+
+```{python}
+branch_mask = np.full(final_image.shape, False)
+branch_mask[th_branch_mask] = True
+branch_mask[w_branch_mask] = True
+branch_mask[soma_mask] = True
+
+if verbose:
+    bm = napari.view_image(branch_mask)
+    bm.add_image(final_image)
+```
+
+file:///home/levtg/astro-morpho/data/pictures_nb/join%20plan.jpg![image.png](attachment:image.png)
+
+
+## Выделение крайних точек
+
+```{python}
+from skimage.morphology import cube
+edge = dilation(flood_mask, cube(3)) ^ flood_mask
+points = edge & th_branch_mask
 ```
 
 ```{python}
-from skimage.graph import pixel_graph
+if verbose:
+    bm.add_image(points)
 ```
 
 ```{python}
-pixel_graph(skeleton)
+if verbose:
+    bm.add_image(w_branch_mask)
+    bm.add_image(th_branch_mask)
+    bm.add_image(soma_mask)
+    bm.add_image(flood_mask)
+```
+
+## Ближайшие точки скелета
+
+```{python}
+points_coords = idx[points]
+skelet_coords = idx[w_branch_mask]
 ```
 
 ```{python}
-w.add_image(img_noisy)
+points2connect = {}
+for point in points_coords:
+    point_dists = np.linalg.norm(point - skelet_coords, axis=-1)
+    if len(points2connect.keys()) > 0:
+        point_n_dists = np.linalg.norm(point - np.array(list(points2connect.keys())), axis=-1)
+        if point_n_dists.min() < 1.5:
+            continue
+    if point_dists.min() > 1.5:
+        coord = skelet_coords[point_dists.argmin()]
+        points2connect[tuple(point)] = tuple(coord)
 ```
 
 ```{python}
-def localize_graph_points(G, point_loc, nodes=None, dist=1):
-    if nodes is None:
-        nodes = G.nodes()
-    node_coords = np.array(nodes.keys())
-    node_dists = np.linalg.norm(point_loc-node_coords, axis=-1)
-    suit_points = [tuple(n) for n in node_coords[node_dists < dist]]
-    return suit_points
+print(points_coords.shape, len(points2connect.keys()))
 ```
 
-Если получится выделять множство узлов не через for, с помощью маски, то можно переделать функцию получше
+## Добавление соединений
 
 ```{python}
-def set_graph_area(G, area_mask, out=True, set_name=None):
-    nodes = G.nodes(data=True)
-    node_coords = np.array(nodes.keys())
-    for node, _ in nodes:
-        if area_mask[tuple(node)] and not have key area:
-            if set_name is not None:
-                nx.set_node_attributes(G, {node: {'area':set_name}})
-    if out:
-        return G.subgraph_view()
-            
-    
-```
-
-```{python}
-
+# from networkx.algorithms.shortest_paths.weighted import multi_source_dijkstra
+full_mask = branch_mask.copy()
+for s, e in points2connect.items():
+#     d, p = multi_source_dijkstra(G3, [tuple(n) for n in skelet_coords], s, 'weight')
+    path = nx.shortest_path(G3, s, e, 'weight')
+    path_coords = np.array(path)
+    full_mask[path_coords[:,0], path_coords[:, 1], path_coords[:,2]] = True
 ```
 
 # Многомасштабный гессиан
