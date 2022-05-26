@@ -105,6 +105,11 @@ OUT = False
 # Считывание изображения
 
 ```{python}
+if HANDY:
+    filename = '/home/levtg/astro-morpho/data/3wk-ly10-raw.pic'
+```
+
+```{python}
 stack, meta = ccdb.read_pic(filename)
 dims = ccdb.get_axes(meta)
 dims
@@ -209,6 +214,11 @@ if verbose:
 ```
 
 ```{python}
+i, j, k = np.indices(final_image.shape)
+idx = np.stack((i,j,k), axis=3)
+```
+
+```{python}
 soma = [tuple(i) for i in idx[soma_mask]]
 ```
 
@@ -266,10 +276,6 @@ img = np.where(flood_mask, img_branch, 0)
 skeleton = skeletonize(img)
 if verbose:
     w.add_image(skeleton, blending='additive', colormap='cyan')
-```
-
-```{python}
-from skimage.graph import pixel_graph
 ```
 
 ```{python}
@@ -354,7 +360,7 @@ TEST AREA END
 
 ```{python}
 if HANDY:
-    sigma = 2
+    sigma = 1.5
 ```
 
 ```{python}
@@ -395,11 +401,6 @@ crops = [((slice(1, None)), (slice(None, -1))),
 ```
 
 ```{python}
-i, j, k = np.indices(vectors.shape[:-1])
-idx = np.stack((i,j,k), axis=3)
-```
-
-```{python}
 G3 = nx.Graph()
 nodes3 = {}
 ```
@@ -412,16 +413,35 @@ for crop, acrop in tqdm(crops):
 ## Добавление точек сомы в граф
 
 ```{python}
-G = nx.complete_graph(soma)
+def get_mask_vals(idxs, mask):
+    idx_mask = mask[idxs[:,0], idxs[:,1], idxs[:,2]]
+    return idxs[idx_mask]
+```
+
+```{python}
+def get_edges(mask, index1, index2, weight):
+    idx1 = [tuple(i) for i in get_mask_vals(index1.reshape((-1, index1.shape[-1])), mask)]
+    idx2 = [tuple(i) for i in get_mask_vals(index2.reshape((-1, index2.shape[-1])), mask)]
+    print(idx1, idx2)
+    return zip(idx1, idx2, weight)
+```
+
+```{python}
+Gsoma = nx.Graph()
+```
+
+```{python}
+for crop, acrop in tqdm(crops):
+    Gsoma.add_weighted_edges_from(get_edges(soma_mask, idx[crop], idx[acrop], 0.7))
 ```
 
 ```{python}
 nx.set_edge_attributes(G, 0.7, name='weight')
-nx.set_edge_attributes(G, 'soma', name='area')
+# nx.set_edge_attributes(G, 'soma', name='area')
 ```
 
 ```{python}
-for p1, p2, weight in G.edges(data=True):
+for p1, p2, weight in Gsoma.edges(data=True):
     try:
         old_weight = G3.get_edge_data(p1, p2)['weight']
     except:
