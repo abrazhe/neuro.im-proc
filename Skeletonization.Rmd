@@ -105,8 +105,8 @@ OUT = False
 # Считывание изображения
 
 ```{python}
-if HANDY:
-    filename = '/home/levtg/astro-morpho/data/3wk-ly10-raw.pic'
+# if HANDY:
+#     filename = '/home/levtg/astro-morpho/data/3wk-ly10-raw.pic'
 ```
 
 ```{python}
@@ -182,7 +182,7 @@ final_image = img_clear
 ```
 
 ```{python}
-w = napari.view_image(final_image, colormap='magenta')
+w = napari.view_image(final_image, colormap='magenta', ndisplay=3)
 ```
 
 # Выделение сомы
@@ -435,7 +435,7 @@ for crop, acrop in tqdm(crops):
 ```
 
 ```{python}
-nx.set_edge_attributes(G, 0.7, name='weight')
+# nx.set_edge_attributes(G, 0.7, name='weight')
 # nx.set_edge_attributes(G, 'soma', name='area')
 ```
 
@@ -628,8 +628,8 @@ branch_mask[w_branch_mask] = True
 branch_mask[soma_mask] = True
 
 if verbose:
-    bm = napari.view_image(branch_mask)
-    bm.add_image(final_image)
+    bm = napari.view_image(final_image, colormap='magenta', ndisplay=3)
+    bm.add_image(branch_mask, blending='additive', colormap='cyan')
 ```
 
 file:///home/levtg/astro-morpho/data/pictures_nb/join%20plan.jpg![image.png](attachment:image.png)
@@ -645,15 +645,15 @@ points = edge & th_branch_mask
 
 ```{python}
 if verbose:
-    bm.add_image(points)
+    bm.add_image(points, blending='additive', colormap='red', gamma=0.2)
 ```
 
 ```{python}
 if verbose:
-    bm.add_image(w_branch_mask)
-    bm.add_image(th_branch_mask)
-    bm.add_image(soma_mask)
-    bm.add_image(flood_mask)
+    bm.add_image(w_branch_mask, blending='additive')
+    bm.add_image(th_branch_mask, blending='additive')
+    bm.add_image(soma_mask, blending='additive')
+    bm.add_image(flood_mask, opacity=0.5, colormap='red')
 ```
 
 ## Ближайшие точки скелета
@@ -741,22 +741,68 @@ def multiscale_vesselness(img, sigma_start, sigma_stop, nlevels=50, reduce_fn=np
 def multiscale_sigma(img, sigma_start, sigma_stop, nlevels=50):
     sout = np.zeros(img.shape)
     hout = np.zeros(img.shape)
+    vout = np.zeros((*img.shape, 3, 3))
     for sigma in tqdm(np.linspace(sigma_start, sigma_stop, nlevels)):
-        hcurr = vesselness(img, sigma)*sigma**2
-        hout = np.where(hout > hcurr, hout, hcurr)
-        sout = np.where(hout > hcurr, sout, sigma)
-    return hout, sout
+        hcurr, vcurr = astro.hessian.sato3d(img, sigma, hessian_variant='gradient_of_smoothed', return_vectors=True)
+        hcurr *= sigma**2
+        mask = hcurr > hout
+        
+        hout[mask] = hcurr[mask]
+        sout[mask] = sigma
+        vout[mask] = vcurr[mask]
+    return hout, sout, vout
 ```
 
 ```{python}
-h, s = multiscale_sigma(final_image, 0.5, 4)
+h, s, v = multiscale_sigma(final_image, 0.5, 4)
 ```
 
 ```{python}
-hs = napari.view_image(s)
+hs = napari.view_image(s, ndisplay=3)
 hs.add_image(h)
 ```
 
 ```{python}
-s[32]
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+colors = ["black", ""]
+cmap1 = LinearSegmentedColormap.from_list("mycmap", colors)
+```
+
+```{python}
+hs.add_image(np.where(full_mask^soma_mask, s, 0))
+```
+
+```{python}
+hs.add_image(final_image)
+```
+
+```{python}
+from hessian_vectors import add_hessian_vectors, sato2napari_vectors
+```
+
+```{python}
+add_hessian_vectors(hs, *sato2napari_vectors(h, v))
+```
+
+```{python}
+v_n, h_n = sato2napari_vectors(h, v)
+v_n.shape
+
+
+```
+
+```{python}
+add_hessian_vectors(hs, v_n.reshape((*full_mask.shape,2,3))[full_mask], h_n.reshape(full_mask.shape)[full_mask])
+```
+
+```{python}
+sigma_skel = np.where(full_mask, s, 0)
+hs.add_image(np.where(sigma_skel < 1, sigma_skel, 0), blending='additive', name='0.5-1')
+hs.add_image(np.where(np.where(sigma_skel > 1, sigma_skel, 0) < 2, sigma_skel, 0), blending='additive', name='1-2')
+hs.add_image(np.where(np.where(sigma_skel > 2, sigma_skel, 0) < 3, sigma_skel, 0), blending='additive', name='2-3')
+hs.add_image(np.where(sigma_skel > 3, sigma_skel, 0), blending='additive', name='3-4')
+```
+
+```{python}
+w.add_image(full_mask)
 ```
