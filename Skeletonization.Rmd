@@ -6,27 +6,24 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.8
+      jupytext_version: 1.13.7
   kernelspec:
-    display_name: Python 3 (ipykernel)
+    display_name: venv
     language: python
-    name: python3
+    name: venv
 ---
 
 <!-- #region toc=true -->
 <h1>Table of Contents<span class="tocSkip"></span></h1>
-<div class="toc"><ul class="toc-item"><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-1">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-2">Считывание изображения</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-3">Фильтрация изображения</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-4">Выделение сомы</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5">Определение центра</a></span></li><li><span><a href="#Выделение-толстых-отростков" data-toc-modified-id="Выделение-толстых-отростков-6">Выделение толстых отростков</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-7">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-8">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-8.1">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-9">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости" data-toc-modified-id="Расчет-встречаемости-10">Расчет встречаемости</a></span></li><li><span><a href="#Фильтрация-точек-по-встречаемости" data-toc-modified-id="Фильтрация-точек-по-встречаемости-11">Фильтрация точек по встречаемости</a></span></li><li><span><a href="#Выделение-тонких-веток" data-toc-modified-id="Выделение-тонких-веток-12">Выделение тонких веток</a></span></li><li><span><a href="#Объединение" data-toc-modified-id="Объединение-13">Объединение</a></span><ul class="toc-item"><li><span><a href="#Выделение-крайних-точек" data-toc-modified-id="Выделение-крайних-точек-13.1">Выделение крайних точек</a></span></li><li><span><a href="#Ближайшие-точки-скелета" data-toc-modified-id="Ближайшие-точки-скелета-13.2">Ближайшие точки скелета</a></span></li><li><span><a href="#Добавление-соединений" data-toc-modified-id="Добавление-соединений-13.3">Добавление соединений</a></span></li></ul></li><li><span><a href="#Многомасштабный-гессиан" data-toc-modified-id="Многомасштабный-гессиан-14">Многомасштабный гессиан</a></span></li></ul></div>
+<div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span><ul class="toc-item"><li><ul class="toc-item"><li><span><a href="#clahe" data-toc-modified-id="clahe-3.0.1">clahe</a></span></li></ul></li></ul></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4">Фильтрация изображения</a></span></li><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-6">Выделение сомы</a></span></li><li><span><a href="#Матрица-Гессе" data-toc-modified-id="Матрица-Гессе-7">Матрица Гессе</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-8">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-8.1">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей" data-toc-modified-id="Расчет-путей-9">Расчет путей</a></span></li><li><span><a href="#Расчет-встречаемости-и-фильтрация-точек-по-встречаемости" data-toc-modified-id="Расчет-встречаемости-и-фильтрация-точек-по-встречаемости-10">Расчет встречаемости и фильтрация точек по встречаемости</a></span><ul class="toc-item"><li><span><a href="#Ниже-ничего-особо-не-менялось" data-toc-modified-id="Ниже-ничего-особо-не-менялось-10.1">Ниже ничего особо не менялось</a></span></li></ul></li><li><span><a href="#Выделение-тонких-веток" data-toc-modified-id="Выделение-тонких-веток-11">Выделение тонких веток</a></span></li><li><span><a href="#Объединение" data-toc-modified-id="Объединение-12">Объединение</a></span><ul class="toc-item"><li><span><a href="#Выделение-крайних-точек" data-toc-modified-id="Выделение-крайних-точек-12.1">Выделение крайних точек</a></span></li><li><span><a href="#Ближайшие-точки-скелета" data-toc-modified-id="Ближайшие-точки-скелета-12.2">Ближайшие точки скелета</a></span></li><li><span><a href="#Добавление-соединений" data-toc-modified-id="Добавление-соединений-12.3">Добавление соединений</a></span></li></ul></li><li><span><a href="#Многомасштабный-гессиан" data-toc-modified-id="Многомасштабный-гессиан-13">Многомасштабный гессиан</a></span></li></ul></div>
 <!-- #endregion -->
 
 # **Next actions and TODOs**
  - [ ] Test performance on other cells
  - [ ] Test performace of the approach with more sigma steps (log scale is preferred, i.e. `2.0**np.arange(-1,5,0.5)`)
  - [ ] Think about a way to regularize vector orientations, using orientations of the neighbours, or at different scales
- - [-] Find a best way to skeletonize the qstack-based arrays and masks (as one of the approaches)
- - [X] Find a way to "glue" together paths, that a close-by and have a similar direction
- - [ ] Visualize different sub-trees in the merged paths (add individually to napari?)
- - [ ] add way to gradually strip/simplify (sub-)graphs for better visualization
- 
+ - [ ] Find a best way to skeletonize the qstack-based arrays and masks (as one of the approaches)
+ - [ ] Find a way to "glue" together paths, that a close-by and have a similar direction
 
 ```{python}
 import os
@@ -68,11 +65,6 @@ import astromorpho as astro
 ```{python}
 from networx2napari import draw_edges, draw_nodes
 ```
-```{python}
-def eu_dist(p1, p2):
-    return np.sqrt(np.sum([(x - y)**2 for x, y in zip(p1, p2)]))
-```
-
 
 
  
@@ -106,16 +98,6 @@ def count_points_paths(paths):
         for n in path:
             acc[n] += 1
     return acc
-```
-
-```{python}
-def get_shell_mask(mask, do_skeletonize=False, as_points=False):
-    out = ndi.binary_erosion(mask)^mask
-    if do_skeletonize:
-        out = skeletonize(out)
-    if as_points:
-        out = astro.morpho.mask2points(out)
-    return out 
 ```
 
 ```{python}
@@ -170,11 +152,9 @@ plt.rc('figure', dpi=150)
 
 ```{python tags=c("parameters")}
 #filename = '3wk-both1-grn-raw.pic'
-#data_dir = '/home/levtg/astro-morpho/data/'
-data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+data_dir = '/home/levtg/astro-morpho/data/'
+# data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
 filename = '3wk-both1-grn-raw.pic'
-
-use_clahe = True
 
 verbose = True
 sigma = 2
@@ -213,20 +193,10 @@ else:
 print(zoom)
 ```
 
-```{python}
-
-```
-
 ### clahe
-
-AB:> Честно говоря, я не вижу большой разницы с применением и без применения CLAHE
 
 ```{python}
 clahe = cv2.createCLAHE(clipLimit =2.0, tileGridSize=(8,8))
-```
-
-```{python}
-# clahe?
 ```
 
 ```{python}
@@ -235,28 +205,19 @@ stack_shape = stack.shape
 #print("Rolled shape: ", stack_roll.shape)
 # #%time img = clahe.apply(stack_roll).reshape(stack.shape)
 
-img_clahe = np.zeros(stack.shape, np.float32)
+img = np.zeros(stack.shape, np.float32)
 for k,plane in enumerate(stack):
-    img_clahe[k] = clahe.apply(plane)
+    img[k] = clahe.apply(plane)
 ```
 
 ```{python}
-wi = napari.view_image(stack, ndisplay=3, scale=(zoom, 1,1), name='raw', colormap='cyan')
-wi.add_image(img_clahe, scale=(zoom,1,1), name='CLAHE',colormap='magenta')
-wi.add_image(stack.astype(np.float32)-img_clahe.astype(np.float32),  scale=(zoom,1,1),  name='residuals')
+if verbose:
+    wi = napari.view_image(stack, ndisplay=3, scale=(zoom, 1,1), name='raw', colormap='cyan')
+    wi.add_image(img, scale=(zoom,1,1), name='CLAHE',colormap='magenta')
 ```
 
 ```{python}
-plt.figure()
-plt.hist(np.ravel(stack), 100, histtype='step', log=True, label='raw');
-plt.hist(np.ravel(img_clahe), 100, histtype='step', log=True, label='CLAHE');
-plt.title("Effect of CLAHE on stack histogram")
-plt.legend()
-```
-
-```{python}
-# check if use clahe or not
-img = img_clahe if use_clahe else stack
+threshold_li(img)
 ```
 
 ```{python}
@@ -278,7 +239,20 @@ img_cropped = np.array([crop_image(plane,domain_mask, margin=10) for plane in im
 ```
 
 ```{python}
-w = napari.view_image(img_cropped)
+max_proj_1 = img_cropped.max(1)
+domain_mask_1 = ndi.binary_dilation(largest_region(remove_small_objects(max_proj_1 > 0.5*threshold_li(max_proj_1))), iterations=3)
+domain_mask_1 = ndi.binary_closing(domain_mask_1,iterations=3)
+plt.imshow(max_proj_1, cmap='gray')
+plt.contour(domain_mask_1, colors=['r'], levels=[0.5])
+```
+
+```{python}
+img_cropped = np.array([crop_image(img_cropped[:,i],domain_mask_1, margin=10) for i in range(img_cropped.shape[1])]).swapaxes(0,1)
+```
+
+```{python}
+if verbose:
+    napari.view_image(img_cropped)
 ```
 
 Важный вопрос, как сделать одинаковым масштаб по осям z и xy. Можно downsample XY, можно upsample (by interpolation) Z. Можно комбинировать. В идеале, наверное, XY не трогать, а сделть upsample по Z. 
@@ -296,10 +270,6 @@ plt.imshow(img_noisy.max(0), cmap='gray')
 img.shape, img_noisy.shape
 ```
 
-```{python}
-#w = napari.view_image(img_noisy)
-```
-
 # Фильтрация изображения
 
 ```{python}
@@ -308,10 +278,6 @@ def filter_image(image, filter_func):
     #img_filt = np.where(image > threshold, image, 0)
     binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
     return np.where(binary_clean, image, 0)
-```
-
-```{python}
-threshold_const = lambda x: 187
 ```
 
 ```{python}
@@ -331,7 +297,7 @@ final_image.shape
 
 ```{python}
 # НЕ ЗАКРЫВАТЬ!!!
-w = napari.view_image(final_image, colormap='gray', ndisplay=3)
+# allW = napari.view_image(final_image, colormap='gray', ndisplay=3, opacity=0.5)
 ```
 
 # Определение центра
@@ -360,10 +326,6 @@ X1a = flat_indices(final_image.shape)
 ```
 
 ```{python}
-
-```
-
-```{python}
 # %time weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image,5))**2,plow=99.5,phigh=99.99)
 ```
 
@@ -375,30 +337,11 @@ center
 # Выделение сомы
 
 ```{python}
-from skimage.morphology import erosion, dilation
-```
-
-```{python}
-from skimage.morphology import skeletonize, flood
+from skimage.morphology import dilation, skeletonize, flood
 ```
 
 ```{python}
 from astromorpho import morpho
-```
-
-```{python}
-#to_erode = final_image.copy() # для array [:] не создает копию
-```
-
-```{python}
-# # it's hard to define how many iterations of erosion to make
-# niters_erosion = int(np.round(6*zoom/downscale))
-# for i in tqdm(range(niters_erosion), desc='grayscale erosion'):
-#     to_erode = erosion(to_erode)
-```
-
-```{python}
-#eroded = remove_small_objects(to_erode > 0, 5, connectivity=3)
 ```
 
 **Альтернативный подход к сегментации сомы**
@@ -429,139 +372,15 @@ if verbose:
 ```
 
 ```{python}
-
+# %time soma_all  = morpho.mask2points(soma_mask)
+# %time soma_shell = morpho.inside_boundary_pixels(soma_mask)
 ```
-
-```{python}
-#soma = [tuple(i) for i in idx[soma_mask]]
-#soma_shell = 
-# #%time soma_all  = morpho.mask2points(soma_mask)
-# #%time soma_shell = morpho.inside_boundary_pixels(soma_mask)
-# %time soma_shell = get_shell_mask(soma_mask, as_points=True)
-```
-
-```{python}
-verbose
-```
-
-# Выделение толстых отростков
-
-```{python}
-# branches = filter_image(img_noisy, threshold_minimum)
-# img_branch = branches/branches.max()
-```
-
-```{python}
-# flood_mask = flood(img_branch > 0, center)
-# if verbose:
-#     w.add_image(flood_mask, colormap='red', opacity=0.5)
-```
-
-```{python}
-# img = np.where(flood_mask, img_branch, 0)
-# skeleton = skeletonize(img)
-# if verbose:
-#     w.add_image(skeleton, blending='additive', colormap='cyan')
-```
-
-```{python}
-#w_branch_mask = skeleton == 255
-```
-
-TEST AREA START
-
-```{python}
-# def localize_graph_points(G, point_loc, nodes=None, dist=1):
-#     if nodes is None:
-#         nodes = G.nodes()
-#     node_coords = np.array(nodes.keys())
-#     node_dists = np.linalg.norm(point_loc-node_coords, axis=-1)
-#     suit_points = [tuple(n) for n in node_coords[node_dists < dist]]
-#     return suit_points
-```
-
-```{python}
-# def set_graph_area(G, area_mask, out=True, set_name=None):
-#     coords = np.array(G.nodes())
-#     node_check = area_mask[coords[:,0], coords[:,1], coords[:,2]]
-#     selected_nodes = [tuple(n) for n in coords[node_check]]
-   
-#     if set_name is not None:
-#         nx.set_node_attributes(G, {tuple(n): {'area':set_name} for n in coords[node_check]})
-                
-#     if out:
-#         return selected_nodes
-```
-
-Нужна функция для выделения сабграфа (библиотечная делает ридонли). Функция ниже из доков. Требует осмысления и доработки.
-
-```{python}
-def create_subgraph(G, nodes):
-    # Create a subgraph SG based on a (possibly multigraph) G
-    SG = G.__class__()
-    SG.add_nodes_from((n, G.nodes[n]) for n in largest_wcc)
-    if SG.is_multigraph():
-        SG.add_edges_from((n, nbr, key, d)
-            for n, nbrs in G.adj.items() if n in largest_wcc
-            for nbr, keydict in nbrs.items() if nbr in largest_wcc
-            for key, d in keydict.items())
-    else:
-        SG.add_edges_from((n, nbr, d)
-            for n, nbrs in G.adj.items() if n in largest_wcc
-            for nbr, d in nbrs.items() if nbr in largest_wcc)
-    SG.graph.update(G.graph)
-    return SG
-```
-
-```{python}
-# nodes= G3.nodes()
-# c = np.array(nodes)
-# sc = soma_mask[c[:,0], c[:,1], c[:,2]]
-# soma_nodes = [tuple(n) for n in c[sc]]
-# G3.remove_nodes_from(soma_nodes)
-
-```
-
-```{python}
-# Gsub2 = G3.subgraph(points_mean)
-# new_nodes = {n:n for n in Gsub2.nodes()}
-```
-
-```{python}
-# Gsub2 = G3.subgraph(soma_nodes)
-# new_nodes = {n:n for n in Gsub2.nodes()}
-# props = {'weight': 1 - np.array([edgedata["weight"] for _, _, edgedata in Gsub2.edges(data=True)])}
-# w.add_shapes(draw_edges(new_nodes, list(Gsub2.edges())), 
-#              shape_type='path', 
-#              edge_color='weight', 
-#              edge_width=0.1, 
-#              edge_colormap='inferno', 
-#              properties=props)
-```
-
-TEST AREA END
-
 
 # Матрица Гессе
 
 ```{python}
-#OUT = True
-```
-
-```{python}
-2**5
-```
-
-```{python}
 sigmas = 2.0**np.arange(-1, 4, 1)
-```
-
-```{python}
 sigmas
-```
-
-```{python}
-HANDY
 ```
 
 ```{python}
@@ -582,13 +401,6 @@ for sigma in tqdm(sigmas):
     #sato_coll[sigma] = final_image*sato*sigma**2
     #sato_coll[sigma] = sato*(final_image>0)
     Vf_coll[sigma] = Vf[...,0][...,::-1]
-```
-
-```{python}
-#Vfx = Vf[...,0][...,::-1]
-#V = Vfx[..., 0]
-#U = Vfx[..., 1]
-#C = Vfx[..., 2]
 ```
 
 ```{python}
@@ -614,33 +426,23 @@ for sigma in Vf_coll:
 ```
 
 ```{python}
-
+sato_best = np.argmax([sato_coll[sigma] for sigma in sigmas], axis=0)
 ```
 
-```{python}
-#sato_best = np.argmax([sato_coll[sigma] for sigma in sigmas], axis=0)
-```
-
-```{python}
-
-```
+ 
 
 ```{python}
 from ucats import masks as umasks
 ```
 
 ```{python}
-
-```
-
-```{python}
 ksigma = len(sigmas)-1
-largest_sigma = sigmas[ksigma]
-largest_sigma
+# largest_sigma = sigmas[ksigma]
+# largest_sigma
 ```
 
 ```{python}
-#largest_sigma_seed = largest_region(umasks.select_overlapping(sato_best == ksigma, soma_mask))
+# largest_sigma_seed = largest_region(umasks.select_overlapping(sato_best == ksigma, soma_mask))
 sato = sato_coll[sigmas[1]]#*(final_image)
 #tol = (sato.max()-sato.min())/5
 #print('tol:', tol)
@@ -648,10 +450,7 @@ sato = sato_coll[sigmas[1]]#*(final_image)
 threshold = threshold_li(sato[sato>0])
 mask = remove_small_objects(sato>threshold, int(sigma*64))
 #largest_sigma_seed = flood(sato, center, tolerance=tol)
-```
-
-```{python}
-0.5**0.5
+# np.any(largest_sigma_seed)
 ```
 
 ```{python}
@@ -674,50 +473,56 @@ for k in range(len(sigmas)-2,-1,-1):
 ```
 
 ```{python}
-w = napari.view_image(final_image, )
-for sigma in masks:
-    w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}')
-#w.add_image(masks[sigmas[-1]],colormap='blue',blending='additive')
-#w.add_image(masks[sigmas[-2]],colormap='red',blending='additive')
-#w.add_image(masks[sigmas[-3]],colormap='green',blending='additive')
-#w.add_image(sato_best==len(sigmas)-2,colormap='red',blending='additive')
-#w.add_image(sato_best==len(sigmas)-3,colormap='green',blending='additive')
-#w.add_image(sato_best==len(sigmas)-4,colormap='cyan',blending='additive')
-#w.add_image(mask, colormap='red', opacity=0.75)
+if verbose:
+    w = napari.view_image(final_image, )
+    for sigma in masks:
+        w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}')
 ```
 
 ```{python}
 vectors_best = np.zeros(vectors_coll[sigmas[0]].shape)
-mask_sum = np.zeros(final_image.shape,bool)
-masks_exclusive = {}
-
 for k in range(len(sigmas)-1,-1,-1):
     sigma = sigmas[k]
     mask = masks[sigma]
     if k < len(sigmas)-1:
-        mask = mask & (mask ^ mask_sum)
-    mask_sum += mask.astype(bool)
-    masks_exclusive[sigma] = mask
+        mask = mask & (mask ^ masks[sigmas[k+1]])
     vectors_best[mask] = vectors_coll[sigma][mask]
 ```
 
 ```{python}
-w = napari.view_image(final_image, )
-colors = ['red', 'green', 'magenta', 'cyan', 'blue']
-for sigma, color in zip(masks, itt.cycle(colors)):
-    w.add_image(masks_exclusive[sigma], blending='additive', name=f'σ={sigma:02f}',colormap=color)
+from hessian_vectors import add_hessian_vectors, sato2napari_vectors
+```
+
+```{python}
+def vectors2napari(vectors, index=1):
+    nr, nc, nd = vectors.shape[:-1]
+    indexgrid = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nd))
+    
+#     length = np.ravel(np.linalg.norm(vectors, axis=-1))
+
+    x, y, z = [np.ravel(a)[::index] for a in indexgrid]
+    x1, y1, z1 = np.ravel(vectors[...,0])[::index], np.ravel(vectors[...,1])[::index], np.ravel(vectors[...,2])[::index]
+
+    
+    
+    vectors = np.zeros((*x1.shape, 2, 3))
+    vectors[..., 0, 0] = y
+    vectors[..., 0, 1] = x
+    vectors[..., 1, 0] = y1
+    vectors[..., 1, 1] = x1
+
+    vectors[..., 0, 2] = z
+    vectors[..., 1, 2] = z1
+    
+    return vectors
+```
+
+```{python}
+# vb = napari.view_image(final_image)
+# add_hessian_vectors(vb, vectors2napari(vectors_best, index=50), np.ravel(sato_best)[::50])
 ```
 
 # Построение графа
-
-
-Можно предложить как минимум, два варианта объединения масштабов:
- 1. [ ] "Best" -- это где вектора в каждом вокселе взяты из соответствующих масок для разных масштабов, потом все это сведено в один граф, и во всем графе
-         ищется путь до поверхности сомы. **NOTE:** по идее, маски должны быть "исключительными", то есть каждая область может принадлежать только одной сигме.
- 2. [ ] "Combined" -- скелет и пути задаются итеративно от больших масштабов к маленьким, то есть используется свой граф для каждого масштаба и пути ищутся в дополнение к уже найденым. 
-       Кстати, можно сделать лучше (предположительно), если вектора из qstack_mask старшего масштаба добавлять к графу меньшего масштаба и опять искать пути до сомы. Тогда будут дополнительно 
-       "тренироваться" пути вдоль больших веток. 
-       Потом можно брать просто сумму qstacks для разных масштабов, маску можно брать как объединение всех масок на разных уровнях или снова как надпороговые пиксели. 
 
 ```{python}
 def prep_crops():
@@ -730,10 +535,6 @@ def prep_crops():
     cut = int(np.ceil(len(shifts)/2))
     crops_new = [list(zip(*[num2slice[n] for n in tuple])) for tuple in shifts[cut:]]
     return crops_new
-```
-
-```{python}
-
 ```
 
 ```{python}
@@ -751,10 +552,6 @@ nodes_coll['best'] = {}
 ```
 
 ```{python}
-
-```
-
-```{python}
 i, j, k = np.indices(final_image.shape)
 idx = np.stack((i,j,k), axis=3)
 idx.shape
@@ -764,6 +561,8 @@ idx.shape
 for sigma in sigmas:
     vectors = vectors_coll[sigma]#*(largest_sigma_seed[...,None])
     vectors = vectors*masks[sigma][...,None]
+    #if sigma == largest_sigma:
+    #    vectors = vectors*largest_sigma_seed[...,None]
     for crop, acrop in tqdm(crops_new):
          graph_coll[sigma].add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop]))
 ```
@@ -777,7 +576,6 @@ for crop, acrop in tqdm(crops_new):
 ```
 
 ## Добавление точек сомы в граф
-Может быть, нам только оболочку сомы добавлять?
 
 ```{python}
 def get_mask_vals(idxs, mask):
@@ -793,25 +591,17 @@ def get_edges(mask, index1, index2, weight):
 ```
 
 ```{python}
-
-```
-
-```{python}
 Gsoma = nx.Graph()
 ```
 
 ```{python}
-soma_shell_mask = get_shell_mask(soma_mask)
-```
-
-```{python}
-wx = napari.view_image(soma_mask)
-wx.add_image(soma_shell_mask)
-```
-
-```{python}
 for crop, acrop in tqdm(crops_new):
-    Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
+    Gsoma.add_weighted_edges_from(get_edges(soma_mask, idx[crop], idx[acrop], 0.7))
+```
+
+```{python}
+# nx.set_edge_attributes(G, 0.7, name='weight')
+# nx.set_edge_attributes(G, 'soma', name='area')
 ```
 
 ```{python}
@@ -824,7 +614,8 @@ graph_coll
 #G = graph_coll[largest_sigma]
 #G = graph_coll[current_sigma]
 
-for G in graph_coll.values():
+for key in graph_coll:
+    G = graph_coll[key]
     for p1, p2, weight in Gsoma.edges(data=True):
         try:
             old_weight = G.get_edge_data(p1, p2)['weight']
@@ -837,12 +628,15 @@ for G in graph_coll.values():
 nodes_coll = {key:{n:n for n in G.nodes()} for key, G in graph_coll.items()} # just a copy of G3 nodes
 ```
 
+# Расчет путей
+
 ```{python}
 # %%time 
 
 # fix negative weights
 
 for G in graph_coll.values():
+#     edges = [(u,v,d) for u,v,d in G.edges(data=True) if d['weight']<0]
     for p1,p2, weight in tqdm(G.edges(data=True)):
         if weight['weight'] < 0:
             print(p1,p2,weight)
@@ -850,79 +644,41 @@ for G in graph_coll.values():
 ```
 
 ```{python}
-# #nx.multi_source_dijkstra_path?
+# %%time 
+
+# fix negative weights
+
+for G in tqdm(graph_coll.values()):
+    edges = {(u,v): 0 for u,v,d in G.edges(data=True) if d['weight']<0}
+    nx.set_edge_attributes(G, edges, 'weight')
 ```
 
 ```{python}
-#center, center in nodes3
+len(soma_shell)
 ```
 
-```{python}
-# #nx.single_source_dijkstra_path?
-```
-
-```{python}
-# current_sigma = sigmas[-1]
-# G = graph_coll[current_sigma]
-# print(current_sigma)
-```
-
-```{python}
-# #%time paths_dict = nx.single_source_dijkstra_path(G3, center)
-# #%time paths_dict = nx.multi_source_dijkstra_path(G, soma_shell)
-```
-
-```{python}
-#paths_dict.keys()
-```
-
-```{python}
-#paths = list(paths_dict.values())
-```
-
-```{python}
-
-```
-
-```{python}
-#'{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma)
-```
-
-```{python}
-OUT
-```
-
-```{python}
-# if OUT:
-#     np.save('{}_sigma{}_paths_all'.format(os.path.basename(filename), sigma), np.array(paths, dtype=object))
-```
-
-# Расчет путей, встречаемости точек в путях и слияние графов по путям
+# Расчет встречаемости и фильтрация точек по встречаемости
 
 ```{python}
 from copy import copy
 
-def find_paths(G, targets, min_count=1, min_path_length=10):
+def make_qstack(G, targets, min_count=1):
     paths_dict = nx.multi_source_dijkstra_path(G, targets, )
-    
-    #reverse order of points in paths, so that they start at tips 
-    paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
     paths = list(paths_dict.values())
     points = count_points_paths(paths)
-
+    #to_del = [point for point,count in points.items() if count <=1]
+    #points_count = copy(points)
+    #for point in to_del:
+    #    del points_count[point]
     qstack = np.zeros(vectors.shape[:-1])  #Это встречаемость точек в путях
     for p, val in points.items():
         if val >= min_count:
             qstack[p] = np.log(val)
-    return qstack, paths_dict
+    return qstack, paths
 ```
 
 ```{python}
-
-```
-
-```{python}
-#qstacks  = {sigma:find_paths(graph_coll[sigma], soma_shell)[0] for sigma in tqdm(graph_coll)}
+#qstacks  = {sigma:make_qstack(graph_coll[sigma], soma_shell)[0] for sigma in tqdm(graph_coll)}
 ```
 
 ```{python}
@@ -933,306 +689,7 @@ qstack_masks = {}
 sigmas
 ```
 
-## Building all paths at once, using the "best-scale" full graph
-
 ```{python}
-# %time qstacks['best'], paths_best = find_paths(graph_coll['best'], soma_shell)
-qstack_masks['best'] = qstacks['best'] > threshold_li(qstacks['best'][qstacks['best']>0])
-```
-
-```{python}
-#paths_best_tails = {p[-1]:p for p in tqdm(paths_best.values()) if len(p) >= min_length} #paths, indexed by endpoints ("tips")
-```
-
-```{python}
-#all_keys = list(paths_best.keys())
-all_tips = list(paths_best.keys())
-```
-
-```{python}
-len(all_tips)
-```
-
-```{python}
-k = np.random.randint(len(all_tips))
-
-p = paths_best[all_tips[k]]
-all_tips[k], p[0], p[-1]
-```
-
-```{python}
-pa = np.array(p)
-```
-
-```{python}
-pa[0]
-```
-
-```{python}
-near_paths = [path for tail, path in paths_best.items() if eu_dist(p[-1],tail) < 10]
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-len(near_paths)
-```
-
-```{python}
-#t = w.add_points(pa,size=1, face_color='magenta', edge_color='magenta')
-```
-
-```{python}
-w = napari.view_image(final_image)
-```
-
-```{python}
-# Нужно вручную выбрать точки
-inits = [tuple(t) for t in w.layers[1].data.astype(int)]
-```
-
-```{python}
-paths = []
-
-ata = np.array(all_tips)
-
-for t in inits:
-    tx = tuple(ata[np.argmin(np.linalg.norm(t-ata, axis=1))])
-    paths.append(np.array(paths_best[tx]))
-    #np.array(paths_best_tails[t]) for t in inits if t in paths_best_tails
-```
-
-```{python}
-
-```
-
-```{python}
-[tuple(p[-1]) for p in paths]
-```
-
-```{python}
-#px = w.add_shapes(pa,shape_type='path', edge_width=1, edge_color='magenta', blending='translucent_no_depth')
-```
-
-```{python}
-#px2 = w.add_shapes(np.array(near_paths[np.random.randint(len(near_paths))]), shape_type='path', edge_width=0.5, edge_color='green')
-```
-
-```{python}
-kwargs = dict(edge_width=0.5, shape_type='path', blending='translucent_no_depth')
-```
-
-```{python}
-pacc = []
-for p in paths:
-    pacc.append(w.add_shapes(p,   edge_color=np.random.rand(3),  **kwargs))
-```
-
-```{python}
-domain_shell = get_shell_mask(masks_exclusive[0.5], do_skeletonize=True, as_points=True)
-```
-
-```{python}
-domain_shell = set(domain_shell) 
-```
-
-```{python}
-tips = [t for t in tqdm(all_tips) if t in domain_shell]
-```
-
-```{python}
-len(tips), len(domain_shell)
-```
-
-```{python}
-tip_paths = [np.array(paths_best[t]) for t in tips]
-```
-
-## Converting paths to directed graphs, merging and visualizing the graphs
-
-```{python}
-def path_to_graph(path):
-    "Converts an ordered list of points (path) into a directed graph"
-    g = nx.DiGraph()
-    tp = tip_paths[0]
-    
-    for k,p in enumerate(path):
-        tp = tuple(p)
-        g.add_node(tp) 
-        if k > 0:
-            g.add_edge(tp, tuple(path[k-1]), weight=1)
-    return g
-    
-    
-def view_graph(g, viewer, color=None, kind='points', name=None):
-    if color is None:
-        color = np.random.rand(3)
-    pts = np.array(g.nodes)
-    
-    kw = dict(face_color=color, edge_color=color, blending='translucent_no_depth', name=name)
-    if kind == 'points':
-        viewer.add_points(pts, size=1, **kw)
-    elif kind == 'path':
-        viewer.add_shapes(pts, edge_width=0.5, shape_type='path', **kw)
-        
-    
-
-def get_tips(g):
-    return {n for n in g.nodes if len(list(g.successors(n))) == 0}
-            
-def get_roots(g):
-    return {n for n in g.nodes if len(list(g.predecessors(n))) < 1}
-
-def get_branch_points(g):
-    return {n for n in gx.nodes if len(list(gx.successors(n))) > 1}            
-```
-
-```{python}
-graphs = [path_to_graph(tp) for tp in tqdm(tip_paths)]
-```
-
-```{python}
-near_graphs = [path_to_graph(tp) for tp in near_paths]
-```
-
-```{python}
-picked_graphs = [path_to_graph(tp) for tp in paths]
-```
-
-```{python}
-g1,g2 = near_graphs[0], near_graphs[101]
-view_graph(g1, w, kind='path', name='1')
-view_graph(g2, w, kind='path', name='2')
-```
-
-```{python}
-
-```
-
-```{python}
-# #%time gx = nx.compose_all(near_graphs + [graphs[100]])
-# %time gx = nx.compose_all(picked_graphs)
-```
-
-```{python}
-roots = get_roots(gx)
-roots
-```
-
-```{python}
-tips = get_tips(gx)
-tips
-```
-
-```{python}
-def graph_to_paths(g, min_path_length=1):
-    """
-    given a directed graph, return a list of a lists of nodes, collected
-    as unbranched segments of the graph
-    """
-
-    roots = get_roots(g)
-    
-    def _acc_segment(root, segm, accx):
-        if segm is None:
-            segm = []
-        if accx is None:
-            accx = []
-        children = list(g.successors(root))
-        
-        if len(children) < 1:
-            accx.append(segm)
-            return
-        
-        elif len(children) == 1:
-            c = children[0]
-            segm.append(c)
-            _acc_segment(c, segm, accx)
-        
-        if len(children) > 1:
-            #segm.append(root)
-            accx.append(segm)
-            for c in children:
-                _acc_segment(c, [root, c], accx)        
-    
-    acc = {}
-    for root in roots:
-        px = []
-        _acc_segment(root, [], px)
-        acc[root] = [s for s in px if len(s) >= min_path_length]
-    return acc
-            
-        
-        
-def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
-    #colors = np.random.randint(0,255,size=(len(paths),3))
-    stack = np.zeros(shape + (3,), np.uint8)
-    for root in paths:
-        color =  np.random.randint(0,255, size=3)
-        for kc,pc in enumerate(paths[root]):
-            if change_color_at_branchpoints:
-                color = np.random.randint(0,255, size=3)
-            for k,p in enumerate(pc):
-                #print(k, p)
-                stack[tuple(p)] = color
-    return stack
-```
-
-```{python}
-
-```
-
-```{python}
-xpaths = graph_to_paths(gx, break_at_branchpoints=True)
-len(xpaths)
-```
-
-```{python}
-len(xpaths[(109, 249, 208)])
-```
-
-```{python}
-# %time colored_paths = paths_to_colored_stack(xpaths, final_image.shape, change_color_at_branchpoints=True)
-```
-
-```{python}
-w.add_image(colored_paths,  channel_axis=3, colormap=['red','green','blue'], name='colored_paths')
-```
-
-```{python}
-
-```
-
-```{python}
-# %time gx_all = nx.compose_all(graphs) # can take a while
-```
-
-```{python}
-# %time xpaths_all = graph_to_paths(gx_all)
-```
-
-```{python tags=c()}
-# %time colored_paths_all = paths_to_colored_stack(xpaths_all, final_image.shape, change_color_at_branchpoints=False)
-```
-
-```{python}
-#props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
-w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
-```
-
-## Gradual building of the paths from different scales
-
-```{python}
-qstacks = {}
-qstack_masks = {}
-path_dicts = {}
-
 for ksigma in range(len(sigmas)-1,-1,-1):
     #alternative: use shell of a full mask as target
     sigma = sigmas[ksigma]
@@ -1249,7 +706,7 @@ for ksigma in range(len(sigmas)-1,-1,-1):
         if not len(targets):
             print('No points from targets in the graph')
             continue
-    qstack, path_dict = find_paths(G, targets)
+    qstack = make_qstack(G, targets)[0]
     qstack_mask = qstack > threshold_li(qstack[qstack>0])
     if not np.any(qstack_mask):
         print('empty qstack mask!')
@@ -1257,87 +714,25 @@ for ksigma in range(len(sigmas)-1,-1,-1):
             qstack_mask = qstack_masks[higher_sigma]
     qstacks[sigma] = qstack
     qstack_masks[sigma] = qstack_mask
-    path_dicts[sigma] = path_dict
-```
-
-### ...and trying to merge everythin to graphs. Fails at the moment (:AB)
-
-```{python}
-#path_dicts[0.5].values()
 ```
 
 ```{python}
-# %%time 
-
-sigma_pgraphs = []
-for pd in path_dicts.values():
-    for path in pd.values():
-        sigma_pgraphs.append(path_to_graph(path))
+isinstance(2.0, (int, float))
 ```
+
+Можно предложить как минимум, два варианта объединения масштабов:
+ 1. [ ] "Best" -- это где вектора в каждом вокселе взяты из соответствующих масок для разных масштабов, потом все это сведено в один граф, и во всем графе
+         ищется путь до поверхности сомы. **NOTE:** по идее, маски должны быть "исключительными", то есть каждая область может принадлежать только одной сигме.
+ 2. [ ] "Combined" -- скелет и пути задаются итеративно от больших масштабов к маленьким, то есть используется свой граф для каждого масштаба и пути ищутся в дополнение к уже найденым. 
+       Кстати, можно сделать лучше (предположительно), если вектора из qstack_mask старшего масштаба добавлять к графу меньшего масштаба и опять искать пути до сомы. Тогда будут дополнительно 
+       "тренироваться" пути вдоль больших веток. 
+       Потом можно брать просто сумму qstacks для разных масштабов, маску можно брать как объединение всех масок на разных уровнях или снова как надпороговые пиксели. 
 
 ```{python}
-len(sigma_pgraphs)
-```
-
-```{python}
-# %time merged_pgraphs = nx.compose_all(sigma_pgraphs) # can take a while
-```
-
-```{python}
-sys.getrecursionlimit()
-```
-
-```{python}
-#sys.setrecursionlimit(100000)
-```
-
-```{python}
-roots = get_roots(merged_pgraphs)
+qstacks['best'] = make_qstack(graph_coll['best'], soma_shell)[0]
+qstack_masks['best'] = qstacks['best'] > threshold_li(qstacks['best'][qstacks['best']>0])
 
 ```
-
-```{python}
-# %time xpaths = graph_to_paths(merged_pgraphs)
-```
-
-```{python}
-
-```
-
-```{python}
-# for ksigma in range(len(sigmas)-2,0,-1):
-#     #alternative: use shell of a full mask as target
-#     sigma = sigmas[ksigma]
-#     print(ksigma, sigma)
-#     G = graph_coll[sigma]
-#     targets = astro.morpho.mask2points(qstack_masks[sigmas[ksigma+1]])
-#     targets = [t for t in targets if G.has_node(t)]
-#     if not len(targets):
-#         print('No points from targets in the graph')
-#         targets = astro.morpho.boundary_pixels(masks[sigmas[ksigma+1]])
-#         targets = [t for t in targets if G.has_node(t)]
-#         if not len(targets):
-#             print("Couldn't fix this")
-#             continue
-#     qstack = find_paths(G, targets)[0]
-#     qstack_mask = qstack > threshold_li(qstack[qstack>0])
-#     if not np.any(qstack_mask):
-#         print('empty qstack mask!')
-#         qstack_mask = qstack_masks[sigmas[ksigma+1]]
-#     qstacks[sigma] = qstack
-#     qstack_masks[sigma] = qstack_mask
-```
-
-```{python}
-sigmas
-```
-
-```{python}
-
-```
-
-### Qstack-based approachs
-
 
 ```{python}
 qstacks['combined'] = sum(qstacks[sigma] for sigma in sigmas)
@@ -1357,7 +752,7 @@ if verbose:
     for sigma in qstacks:
         name = sigma if isinstance(sigma, str) else f'qstack@{sigma:0.2f}'
         qstack = qstacks[sigma]
-        #data_range = np.percentile(qstack[qstack>0], (1,99))
+        data_range = np.percentile(qstack[qstack>0], (1,99))
         w.add_image(qstack, name=name, interpolation='nearest', blending='additive', contrast_limits=data_range, visible=False)
         #threshold = threshold_li(qstack[qstack>0])
         w.add_image(qstack_masks[sigma], name=name+':qmask', blending='additive', colormap='red')
@@ -1392,27 +787,14 @@ w.add_image(combined_skeleton, colormap='red', blending='additive')
 ```
 
 ```{python}
-qstacks[sigmas[-2]] = find_paths(graph_coll[sigmas[-2]], astro.morpho.mask2points(qstacks[sigmas[-1]]>3.5))[0]
+qstacks[sigmas[-2]] = make_qstack(graph_coll[sigmas[-2]], astro.morpho.mask2points(qstacks[sigmas[-1]]>3.5))[0]
 ```
-
-```{python}
-
-```
-
 
 ## Ниже ничего особо не менялось
 
 ```{python}
 if OUT:
     np.save(f'{os.path.basename(filename)}-qstacks.npy',qstacks)
-```
-
-```{python}
-
-```
-
-```{python}
-
 ```
 
 ```{python}
@@ -1690,10 +1072,6 @@ hs.add_image(np.where(sigma_skel > 3, sigma_skel, 0), blending='additive', name=
 
 ```{python}
 w.add_image(full_mask)
-```
-
-```{python}
-
 ```
 
 ```{python}
