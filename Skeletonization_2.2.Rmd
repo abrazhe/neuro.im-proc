@@ -15,7 +15,7 @@ jupyter:
 
 <!-- #region toc=true -->
 <h1>Table of Contents<span class="tocSkip"></span></h1>
-<div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span></li><li><span><a href="#Предобработка-изображения" data-toc-modified-id="Предобработка-изображения-4">Предобработка изображения</a></span><ul class="toc-item"><li><span><a href="#CLAHE" data-toc-modified-id="CLAHE-4.1">CLAHE</a></span></li><li><span><a href="#Кадрирование" data-toc-modified-id="Кадрирование-4.2">Кадрирование</a></span></li><li><span><a href="#Масштабирование" data-toc-modified-id="Масштабирование-4.3">Масштабирование</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4.4">Фильтрация изображения</a></span></li></ul></li><li><span><a href="#Сегментация-сомы" data-toc-modified-id="Сегментация-сомы-5">Сегментация сомы</a></span><ul class="toc-item"><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.1">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.2">Выделение сомы</a></span></li></ul></li><li><span><a href="#Расчет-матрицы-Гессе-для-различных-сигм" data-toc-modified-id="Расчет-матрицы-Гессе-для-различных-сигм-6">Расчет матрицы Гессе для различных сигм</a></span></li><li><span><a href="#Расчет-масок-для-различных-сигм" data-toc-modified-id="Расчет-масок-для-различных-сигм-7">Расчет масок для различных сигм</a></span></li><li><span><a href="#Объединение-собственных-векторов-различных-сигм" data-toc-modified-id="Объединение-собственных-векторов-различных-сигм-8">Объединение собственных векторов различных сигм</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-9">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выражение-для-весов-ребер" data-toc-modified-id="Выражение-для-весов-ребер-9.1">Выражение для весов ребер</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-9.2">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям" data-toc-modified-id="Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям-10">Расчет путей, встречаемости точек в путях и слияние графов по путям</a></span><ul class="toc-item"><li><span><a href="#Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph" data-toc-modified-id="Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph-10.1">Building all paths at once, using the "best-scale" full graph</a></span></li><li><span><a href="#Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs" data-toc-modified-id="Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs-10.2">Converting paths to directed graphs, merging and visualizing the graphs</a></span></li></ul></li></ul></div>
+<div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span></li><li><span><a href="#Предобработка-изображения" data-toc-modified-id="Предобработка-изображения-4">Предобработка изображения</a></span><ul class="toc-item"><li><span><a href="#CLAHE" data-toc-modified-id="CLAHE-4.1">CLAHE</a></span></li><li><span><a href="#Кадрирование" data-toc-modified-id="Кадрирование-4.2">Кадрирование</a></span></li><li><span><a href="#Масштабирование" data-toc-modified-id="Масштабирование-4.3">Масштабирование</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4.4">Фильтрация изображения</a></span></li></ul></li><li><span><a href="#Сегментация-сомы" data-toc-modified-id="Сегментация-сомы-5">Сегментация сомы</a></span><ul class="toc-item"><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.1">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.2">Выделение сомы</a></span></li></ul></li><li><span><a href="#Расчет-матрицы-Гессе-для-различных-сигм" data-toc-modified-id="Расчет-матрицы-Гессе-для-различных-сигм-6">Расчет матрицы Гессе для различных сигм</a></span></li><li><span><a href="#Расчет-масок-для-различных-сигм" data-toc-modified-id="Расчет-масок-для-различных-сигм-7">Расчет масок для различных сигм</a></span></li><li><span><a href="#Объединение-результатов-Сато-для-различных-сигм" data-toc-modified-id="Объединение-результатов-Сато-для-различных-сигм-8">Объединение результатов Сато для различных сигм</a></span></li><li><span><a href="#Объединение-собственных-векторов-различных-сигм" data-toc-modified-id="Объединение-собственных-векторов-различных-сигм-9">Объединение собственных векторов различных сигм</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-10">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выражение-для-весов-ребер" data-toc-modified-id="Выражение-для-весов-ребер-10.1">Выражение для весов ребер</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-10.2">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям" data-toc-modified-id="Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям-11">Расчет путей, встречаемости точек в путях и слияние графов по путям</a></span><ul class="toc-item"><li><span><a href="#Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph" data-toc-modified-id="Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph-11.1">Building all paths at once, using the "best-scale" full graph</a></span></li><li><span><a href="#Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs" data-toc-modified-id="Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs-11.2">Converting paths to directed graphs, merging and visualizing the graphs</a></span></li></ul></li></ul></div>
 <!-- #endregion -->
 
 # **Next actions and TODOs**
@@ -72,9 +72,6 @@ def eu_dist(p1, p2):
     return np.sqrt(np.sum([(x - y)**2 for x, y in zip(p1, p2)]))
 ```
 
-
-
- 
 
 
  
@@ -372,7 +369,13 @@ if verbose:
 # Расчет матрицы Гессе для различных сигм
 
 ```{python}
-sigmas = 2.0**np.arange(-1, 3.5, 0.5)
+sigmas = np.arange(0.5, 8, 0.5)
+id2sigma = {i:sigma for i, sigma in enumerate(sigmas)}
+sigma2id = {sigma:i for i, sigma in enumerate(sigmas)}
+```
+
+```{python}
+sigmas
 ```
 
 ```{python}
@@ -420,12 +423,6 @@ from ucats import masks as umasks
 ```
 
 ```{python}
-sato = sato_coll[sigmas[1]]#*(final_image)
-threshold = threshold_li(sato[sato>0])
-mask = remove_small_objects(sato>threshold, int(sigma*64))
-```
-
-```{python}
 masks = {}
 for sigma in tqdm(sigmas):
     sato = sato_coll[sigma]
@@ -452,6 +449,30 @@ if verbose:
         w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}', colormap='red')
 ```
 
+# Объединение результатов Сато для различных сигм
+
+```{python}
+sigma_sato = np.zeros(final_image.shape, dtype=int)
+```
+
+```{python}
+hout = np.zeros(final_image.shape)
+for sigma, sato in tqdm(sato_coll.items()):
+    hcurr = sato
+    mask = hcurr > hout
+    hout[mask] = hcurr[mask]
+    sigma_sato[mask] = sigma2id[sigma]
+```
+
+```{python}
+if verbose:
+    w = napari.view_image(sigma_sato)
+```
+
+```{python}
+sato_coll
+```
+
 # Объединение собственных векторов различных сигм
 
 ```{python}
@@ -467,6 +488,20 @@ for k in range(len(sigmas)-1,-1,-1):
     mask_sum += mask.astype(bool)
     masks_exclusive[sigma] = mask
     vectors_best[mask] = vectors_coll[sigma][mask]
+```
+
+```{python}
+masks_exclusive
+```
+
+```{python}
+sigma_arr = np.zeros(final_image.shape, dtype=int)
+for sigma_id, sigma in id2sigma.items():
+    sigma_arr[masks_exclusive[sigma]] = sigma_id
+```
+
+```{python}
+napari.view_image(sigma_arr)
 ```
 
 ```{python}
@@ -606,16 +641,6 @@ def calc_edges(U, V, index1, index2, alpha=0.0, do_threshold=True, return_W=Fals
 ```
 
 ```{python}
-graph_coll = {sigma:nx.Graph() for sigma in  sigmas}
-nodes_coll = {sigma:{} for sigma in sigmas}
-```
-
-```{python}
-graph_coll['best'] = nx.Graph()
-nodes_coll['best'] = {}
-```
-
-```{python}
 i, j, k = np.indices(final_image.shape)
 idx = np.stack((i,j,k), axis=3)
 idx.shape
@@ -661,12 +686,11 @@ for th in thresholds:
 ```
 
 ```{python}
-key='best'
 alpha = 0.0
 vectors = vectors_best
-graph_coll[key] = nx.Graph()
+graph = nx.Graph()
 for crop, acrop in tqdm(crops_new):
-         graph_coll[key].add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
+         graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
 ```
 
 ## Добавление точек сомы в граф
@@ -699,17 +723,17 @@ for crop, acrop in tqdm(crops_new):
 
 ```{python tags=c()}
 # %%time 
-for G in graph_coll.values():
-    for p1, p2, weight in Gsoma.edges(data=True):
-        try:
-            old_weight = G.get_edge_data(p1, p2)['weight']
-        except Exception as exc:
-            old_weight = 1
-        G.add_edge(p1, p2, weight=min(weight['weight'], old_weight))
+
+for p1, p2, weight in Gsoma.edges(data=True):
+    try:
+        old_weight = graph.get_edge_data(p1, p2)['weight']
+    except Exception as exc:
+        old_weight = 1
+    graph.add_edge(p1, p2, weight=min(weight['weight'], old_weight))
 ```
 
 ```{python}
-nodes_coll = {key:{n:n for n in G.nodes()} for key, G in graph_coll.items()} # just a copy of G3 nodes
+nodes = {n:n for n in graph.nodes()}
 ```
 
 # Расчет путей, встречаемости точек в путях и слияние графов по путям
@@ -745,10 +769,6 @@ qstack_masks = {}
 
 ```{python}
 all_tips = list(paths_best.keys())
-```
-
-```{python}
-domain_shell_mask = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True)
 ```
 
 ```{python}
@@ -817,12 +837,49 @@ def get_branch_points(g):
 ```{python}
 # %time
 graphs = []
-for i, tp in tqdm(enumerate(tip_paths)):
+for i, tp in enumerate(tqdm(tip_paths)):
     graphs.append(path_to_graph(tp))
     if i % 10000 == 0:
         gx_all = nx.compose_all(graphs)
         graphs = [gx_all]
 gx_all = nx.compose_all(graphs)
+```
+
+```{python}
+nx.write_gml(gx_all, 'gx_all_{}'.format(os.path.basename(filename)))
+```
+
+```{python}
+gx_all = nx.read_gml('gx_all_{}'.format(os.path.basename(filename)))
+```
+
+```{python}
+def get_attrs_by_nodes(G, arr, func=None):
+    nodesG = np.array(G.nodes())
+    attrs = arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
+    if func is not None:
+        func_vect = np.vectorize(func)
+        attrs = func_vect(attrs)
+    return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
+```
+
+```{python}
+# nodesG = np.array(gx_all.nodes())
+# sigma_ids = sigma_arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
+# nodes_sigmas = np.array([id2sigma[i] for i in sigma_ids])
+# nodes_attrs = {tuple(node): sigma for node, sigma in zip(nodesG, nodes_sigmas)}
+```
+
+```{python}
+nx.set_node_attributes(graph, get_attrs_by_nodes(graph, sigma_arr, lambda x: id2sigma[x]), 'sigma_mask')
+```
+
+```{python}
+nx.set_node_attributes(graph, get_attrs_by_nodes(graph, sigma_sato, lambda x: id2sigma[x]), 'sigma_opt')
+```
+
+```{python}
+graph.nodes(data=True)
 ```
 
 ```{python}
@@ -892,6 +949,19 @@ if verbose:
     w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
     #props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
     w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
+```
+
+```{python}
+tup2str = lambda x: ','.join(list(map(str, x)))
+str2tup = lambda x: tuple(map(int, x.split(',')))
+```
+
+```{python}
+g = nx.parse_gml("\n".join(nx.generate_gml(Gtest, tup2str)), destringizer=str2tup)
+```
+
+```{python}
+g.nodes(data=True)
 ```
 
 ```{python}
