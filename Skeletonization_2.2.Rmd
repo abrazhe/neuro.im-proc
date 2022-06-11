@@ -6,11 +6,11 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.7
+      jupytext_version: 1.13.8
   kernelspec:
-    display_name: venv
+    display_name: Python 3 (ipykernel)
     language: python
-    name: venv
+    name: python3
 ---
 
 <!-- #region toc=true -->
@@ -133,10 +133,19 @@ plt.rc('figure', dpi=150)
 
 # Параметры для запуска
 
+```{python}
+if os.path.exists('/home/brazhe/yadisk/'):
+    data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+
+elif os.path.exists('/home/levtg/astro-morpho'):
+    data_dir = '/home/levtg/astro-morpho/data/'
+else:
+    print("Dont know where to look for the data")
+```
+
 ```{python tags=c("parameters")}
 filename = '3wk-both1-grn-raw.pic'
-data_dir = '/home/levtg/astro-morpho/data/'
-# data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+# 
 # filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
 # filename = '3wk-ly1-raw.pic'
 use_clahe = True
@@ -275,7 +284,9 @@ img.shape, img_noisy.shape
 def filter_image(image, filter_func):
     threshold = filter_func(image)
     #img_filt = np.where(image > threshold, image, 0)
-    binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
+    pre_mask = ndi.binary_closing(image >= threshold)
+    pre_mask = remove_small_objects(pre_mask, 5, connectivity=3)
+    binary_clean = largest_region(pre_mask)
     return np.where(binary_clean, image, 0)
 ```
 
@@ -286,6 +297,53 @@ img_clear = filter_image(img_noisy, threshold_li)
 ```{python}
 final_image = img_clear
 final_image.shape
+```
+
+```{python}
+domain_mask3d = ndi.binary_fill_holes(final_image > 0)
+domain_shell_mask = get_shell_mask(domain_mask3d)
+```
+
+```{python}
+def planewise_fill_holes(mask):
+    for k,plane in enumerate(mask):
+        mask[k] = ndi.binary_fill_holes(plane)
+    return mask
+
+    
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+
+domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)   
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
+
+
+domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
+```
+
+```{python}
+domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
+```
+
+```{python}
+w = napari.view_image(img_noisy)
+w.add_image(final_image, colormap='magenta', blending='additive')
+w.add_image(domain_shell_mask, colormap='green', blending='additive')
+w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
 ```
 
 # Сегментация сомы
@@ -370,8 +428,12 @@ if verbose:
 
 ```{python}
 sigmas = np.arange(0.5, 8, 0.5)
-id2sigma = {i:sigma for i, sigma in enumerate(sigmas)}
-sigma2id = {sigma:i for i, sigma in enumerate(sigmas)}
+id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
+sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
+```
+
+```{python}
+#id2sigma[15]
 ```
 
 ```{python}
@@ -438,6 +500,10 @@ for k in range(len(sigmas)-2,-1,-1):
 ```
 
 ```{python}
+verbose = True
+```
+
+```{python}
 if verbose:
     w = napari.view_image(final_image, )
     for sigma in sigmas:
@@ -448,25 +514,47 @@ if verbose:
 # Объединение результатов Сато для различных сигм
 
 ```{python}
-sigma_sato = np.zeros(final_image.shape, dtype=int)
+sigmas
 ```
 
 ```{python}
+
+```
+
+```{python}
+sato_coll.keys()
+```
+
+```{python}
+
+```
+
+```{python}
+sigma_sato = np.zeros(final_image.shape, dtype=int)
 hout = np.zeros(final_image.shape)
-for sigma, sato in tqdm(sato_coll.items()):
+mask_sum = np.zeros(final_image.shape,bool)
+
+for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
     hcurr = sato
-    mask = hcurr > hout
+    print(sigma)
+    mask_sum = masks[sigma] | mask_sum
+    mask = (hcurr > hout)*mask_sum # restrict search for optimal sigmas by the corresponding mask
+    
     hout[mask] = hcurr[mask]
     sigma_sato[mask] = sigma2id[sigma]
 ```
 
 ```{python}
+idx = 10
 if verbose:
-    w = napari.view_image(sigma_sato)
+    w = napari.view_image(final_image)
+    w.add_image(sigma_sato==idx)
+    w.add_image(masks[id2sigma[idx]])
+    w.add_image(sigma_sato)
 ```
 
 ```{python}
-sato_coll
+#sato_coll
 ```
 
 # Объединение собственных векторов различных сигм
@@ -487,7 +575,7 @@ for k in range(len(sigmas)-1,-1,-1):
 ```
 
 ```{python}
-masks_exclusive
+#masks_exclusive
 ```
 
 ```{python}
@@ -755,7 +843,7 @@ qstack_masks = {}
 ## Building all paths at once, using the "best-scale" full graph
 
 ```{python}
-# %time qstacks, paths_best = find_paths(graph, soma_shell)
+# %time qstack, paths_best = find_paths(graph, soma_shell)
 #qstack_masks['best'] = qstacks['best'] > threshold_li(qstacks['best'][qstacks['best']>0])
 ```
 
@@ -775,9 +863,7 @@ for t in all_tips:
         if L >  super_tips[root][1]:
             super_tips[root] = (t, L)
     elif L > min_length:
-        super_tips[root] = (t,L)
-
-        
+        super_tips[root] = (t,L)        
 ```
 
 ```{python}
@@ -790,7 +876,8 @@ key, super_tips[key]
 ```
 
 ```{python}
-
+w = napari.view_image(final_image)
+w.add_image(qstack)
 ```
 
 ```{python}
@@ -798,19 +885,19 @@ key, super_tips[key]
 ```
 
 ```{python}
-domain_shell_mask = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True)
+#domain_shell_mask = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True)
 ```
 
 ```{python}
-domain_shell = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True, as_points=True)
+#domain_shell = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True, as_points=True)
 ```
 
 ```{python}
-domain_shell = set(domain_shell) 
+#domain_shell = set(domain_shell) 
 ```
 
 ```{python}
-masks.keys()
+#masks.keys()
 ```
 
 ```{python}
@@ -818,22 +905,25 @@ large_sigma_mask = sum(masks[sigma] for sigma in masks if sigma >= 4)
 ```
 
 ```{python}
-new_domain_shell_mask = domain_shell_mask & (~ndi.binary_dilation(large_sigma_mask, iterations=10))
-new_domain_shell_mask = new_domain_shell_mask.astype(bool)
+# new_domain_shell_mask = domain_shell_mask & (~ndi.binary_dilation(large_sigma_mask, iterations=10))
+# new_domain_shell_mask = new_domain_shell_mask.astype(bool)
 ```
 
 ```{python}
-w = napari.view_image(final_image, opacity=0.5)
-w.add_image(large_sigma_mask)
-w.add_image(new_domain_shell_mask)
+# w = napari.view_image(final_image, opacity=0.5)
+# w.add_image(large_sigma_mask)
+# w.add_image(new_domain_shell_mask)
 ```
 
 ```{python}
-new_domain_shell = set(astro.morpho.mask2points(new_domain_shell_mask))
+#new_domain_shell = set(astro.morpho.mask2points(new_domain_shell_mask))
+domain_outer_shell_pts = set(astro.morpho.mask2points(domain_outer_shell_mask))
+domain_shell_pts = set(astro.morpho.mask2points(domain_shell_mask))
 ```
 
 ```{python}
-tips = [t for t in tqdm(all_tips) if t in domain_shell]
+#tips = [t for t in tqdm(all_tips) if t in domain_outer_shell_pts]
+tips = [t for t in tqdm(all_tips) if t in domain_shell_pts]
 ```
 
 ```{python}
@@ -841,7 +931,7 @@ tips = [t for t in tqdm(all_tips) if t in domain_shell]
 ```
 
 ```{python}
-len(tips), len(new_domain_shell)
+len(tips), len(domain_outer_shell_pts)
 ```
 
 ```{python}
@@ -903,7 +993,7 @@ def batch_compose_all(tip_paths, batch_size=10000):
 ```
 
 ```{python}
-gx_all = batch_compose_all(tip_paths)
+# %time gx_all = batch_compose_all(tip_paths)
 ```
 
 ```{python}
@@ -927,10 +1017,21 @@ def get_attrs_by_nodes(G, arr, func=None):
 ```
 
 ```{python}
+def filter_graph(graph, func = lambda node: True ):
+    "returns a view on graph for the nodes satisfying the condition defined by func(node)"
+    good_nodes = (node for node in graph.nodes if func(graph.nodes[node]))
+    return graph.subgraph(good_nodes)
+```
+
+```{python}
 # nodesG = np.array(gx_all.nodes())
 # sigma_ids = sigma_arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
 # nodes_sigmas = np.array([id2sigma[i] for i in sigma_ids])
 # nodes_attrs = {tuple(node): sigma for node, sigma in zip(nodesG, nodes_sigmas)}
+```
+
+```{python}
+id2sigma[0] = 0
 ```
 
 ```{python}
@@ -942,6 +1043,39 @@ nx.set_node_attributes(gx_all, get_attrs_by_nodes(graph, sigma_sato, lambda x: i
 ```
 
 ```{python}
+nx.set_node_attributes(gx_all, get_attrs_by_nodes(graph, qstack), 'occurence')
+```
+
+```{python}
+n = list(gx_all.nodes())[0]
+gx_all.nodes[n]
+```
+
+```{python}
+occ_acc = {}
+for sigma in tqdm(sigmas):
+    sub = filter_graph(gx_all, lambda node: node['sigma_mask']==sigma)
+    occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
+```
+
+```{python}
+fig, axs = plt.subplots(3,5, figsize=(9,6), sharex=True)
+occ_threshs = {}
+
+for ax, sigma in zip(np.ravel(axs), sigmas):
+    v_occ = occ_acc[sigma]
+    th = threshold_li(v_occ)
+    occ_threshs[sigma] = th
+    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
+    ax.hist(v_occ, 50)
+    ax.axvline(th, color='red')
+```
+
+```{python}
+
+```
+
+```{python}
 
 ```
 
@@ -950,93 +1084,103 @@ nx.set_node_attributes(gx_all, get_attrs_by_nodes(graph, sigma_sato, lambda x: i
 ```
 
 ```{python}
-from collections import defaultdict
+# from collections import defaultdict
 
-def count_points_paths(paths):
-    acc = defaultdict(int)
-    for path in paths:
-#         for n in path:
-        for subpath in path:
-            for n in subpath:
-#                 print(n, path)
-                acc[n] += 1
-    return acc
+# def count_points_paths(paths):
+#     acc = defaultdict(int)
+#     for path in paths:
+# #         for n in path:
+#         for subpath in path:
+#             for n in subpath:
+# #                 print(n, path)
+#                 acc[n] += 1
+#     return acc
 ```
 
 ```{python}
-fig, axs = plt.subplots(ncols=5, nrows=3, figsize=(20,20))
-for sigma, ax in zip(sigmas, axs.ravel()):
-#     selected_nodes = [n for n,v in gx_all.nodes(data=True) if v['sigma_mask'] == sigma]
-#     selected_paths = graph_to_paths(gx_all.subgraph(selected_nodes))
-#     print(selected_paths.values())
-    selected_paths = paths_best
-    points = count_points_paths(selected_paths)
-    to_del = [point for point,count in points.items() if count <=1]
-    points_count = copy(points)
-    for point in to_del:
-        del points_count[point]
-    points_count = np.array(list(points_count.values()))
-#     points_count = np.array(list(points.values())) 
-#     print(points_count)
-    ax.hist(points_count, bins=np.unique(points_count).size)
-    ax.axvline(threshold_li(points_count), color='red', label='li')
-    ax.axvline(np.mean(points_count), color='orange', label='mean')
-    ax.axvline(np.median(points_count), color='green', label='median')
-    ax.legend()
-    ax.set_title('sigma = {}'.format(sigma))
-    
-    
-#     to_del = [point for point,count in points.items() if count < threshold_li(points_count)]
+# fig, axs = plt.subplots(ncols=5, nrows=3, figsize=(20,20))
+# for sigma, ax in zip(sigmas, axs.ravel()):
+# #     selected_nodes = [n for n,v in gx_all.nodes(data=True) if v['sigma_mask'] == sigma]
+# #     selected_paths = graph_to_paths(gx_all.subgraph(selected_nodes))
+# #     print(selected_paths.values())
+#     selected_paths = paths_best
+#     points = count_points_paths(selected_paths)
+#     to_del = [point for point,count in points.items() if count <=1]
 #     points_count = copy(points)
 #     for point in to_del:
 #         del points_count[point]
-```
-
-```{python}
-super_nodes = []
-for sigma in tqdm(sigmas):
-#     selected_nodes = [n for n,v in gx_all.nodes(data=True) if v['sigma_mask'] == sigma]
-#     selected_paths = graph_to_paths(gx_all.subgraph(selected_nodes))
-    selected_paths = paths_best
-    points = count_points_paths(selected_paths.values())
-    li_thresh = threshold_li(np.array(list(points.values())))
-    to_del = [point for point,count in points.items() if count < li_thresh]
-    points_count = copy(points)
-    for point in to_del:
-        del points_count[point]
-    super_nodes.extend(list(points_count.keys()))
 #     points_count = np.array(list(points_count.values()))
-#     li_thresh = np.mean(points_count)
-#     super_nodes.extend([tuple(point) for point in points if points[point] < li_thresh])
+# #     points_count = np.array(list(points.values())) 
+# #     print(points_count)
+#     ax.hist(points_count, bins=np.unique(points_count).size)
+#     ax.axvline(threshold_li(points_count), color='red', label='li')
+#     ax.axvline(np.mean(points_count), color='orange', label='mean')
+#     ax.axvline(np.median(points_count), color='green', label='median')
+#     ax.legend()
+#     ax.set_title('sigma = {}'.format(sigma))
+    
+    
+# #     to_del = [point for point,count in points.items() if count < threshold_li(points_count)]
+# #     points_count = copy(points)
+# #     for point in to_del:
+# #         del points_count[point]
 ```
 
 ```{python}
-paths_best
+# super_nodes = []
+# for sigma in tqdm(sigmas):
+# #     selected_nodes = [n for n,v in gx_all.nodes(data=True) if v['sigma_mask'] == sigma]
+# #     selected_paths = graph_to_paths(gx_all.subgraph(selected_nodes))
+#     selected_paths = paths_best
+#     points = count_points_paths(selected_paths.values())
+#     li_thresh = threshold_li(np.array(list(points.values())))
+#     to_del = [point for point,count in points.items() if count < li_thresh]
+#     points_count = copy(points)
+#     for point in to_del:
+#         del points_count[point]
+#     super_nodes.extend(list(points_count.keys()))
+# #     points_count = np.array(list(points_count.values()))
+# #     li_thresh = np.mean(points_count)
+# #     super_nodes.extend([tuple(point) for point in points if points[point] < li_thresh])
 ```
 
 ```{python}
-super_nodes = []
-
-selected_paths = paths_best
-points = count_points_paths(selected_paths)
-to_del = [point for point,count in points.items() if count ==1]
-points_count = copy(points)
-for point in to_del:
-    del points_count[point]
-super_nodes.extend(list(points_count.keys()))
+#paths_best
 ```
 
 ```{python}
-filter_graph = gx_all.subgraph(super_nodes)
+# super_nodes = []
+
+# selected_paths = paths_best
+# points = count_points_paths(selected_paths)
+# to_del = [point for point,count in points.items() if count ==1]
+# points_count = copy(points)
+# for point in to_del:
+#     del points_count[point]
+# super_nodes.extend(list(points_count.keys()))
 ```
 
 ```{python}
-# %time xpaths_all = graph_to_paths(filter_graph)
-# %time colored_paths_all = paths_to_colored_stack(xpaths_all, final_image.shape, change_color_at_branchpoints=False)
-w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
-#props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
-w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
-# w.add_image(new_domain_shell_mask)
+#filter_graph = gx_all.subgraph(super_nodes)
+```
+
+```{python}
+# # %time xpaths_all = graph_to_paths(filter_graph)
+# # %time colored_paths_all = paths_to_colored_stack(xpaths_all, final_image.shape, change_color_at_branchpoints=False)
+# w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
+# #props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
+# w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
+# # w.add_image(new_domain_shell_mask)
+```
+
+```{python}
+
+```
+
+### Распределения встречаемостей по сигме
+
+```{python}
+
 ```
 
 # Визуализация
@@ -1095,6 +1239,114 @@ def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
 ```
 
 ```{python}
+occ_threshs
+```
+
+Попробуем взать только те пути, где встречаемость больше порога на соотв. сигме
+
+```{python}
+# %time high_occ_subs = [filter_graph(gx_all, lambda node: (node['occurence'] >=th) & (node['sigma_mask']==sigma)) for sigma, th in occ_threshs.items()]
+# %time high_occurence_graph1  = nx.compose_all(high_occ_subs)
+```
+
+Проблема в том, что в получившимся графе многие ветки оказались отрезанными от сомы. Придется пересчитать пути до поверхности сомы. Но ребер-то между разрезанными ветками нет :) 
+ПОэтому перестроим еще раз граф, но уже используя только узлы из графа `high_occurence_graph1`
+
+```{python}
+high_occurence_graph1a = graph.subgraph(high_occurence_graph1.nodes) # узлы из изначального графа
+```
+
+```{python}
+filtered_soma_shell = [p for p in soma_shell if p in high_occurence_graph1a]
+len(filtered_soma_shell)
+```
+
+```{python}
+qstack2, filtered_paths = find_paths(high_occurence_graph1a, filtered_soma_shell)
+```
+
+```{python}
+high_occurence_tips = get_tips(high_occurence_graph1) # Кочики веток из предыдущего графа
+```
+
+```{python}
+len(high_occurence_tips)
+```
+
+```{python}
+filtered_tips = [t for t in filtered_paths if domain_shell_mask[t] and t in high_occurence_tips]
+```
+
+```{python}
+#napari.view_image(qstack2)
+```
+
+```{python}
+len(filtered_tips), len(filtered_paths)
+```
+
+Теперь скомпозируем все обратно и запишем атрибуты
+
+```{python}
+
+high_occurence_graph1b = nx.compose_all(path_to_graph(filtered_paths[t]) for t in tqdm(filtered_tips))
+```
+
+```{python}
+nx.set_node_attributes(high_occurence_graph1b, get_attrs_by_nodes(graph, sigma_arr, lambda x: id2sigma[x]), 'sigma_mask')
+
+nx.set_node_attributes(high_occurence_graph1b, get_attrs_by_nodes(graph, sigma_sato, lambda x: id2sigma[x]), 'sigma_opt')
+
+nx.set_node_attributes(high_occurence_graph1b, get_attrs_by_nodes(graph, qstack), 'occurence')
+```
+
+```{python}
+
+```
+
+```{python}
+min_occurence = 6
+# %time simple_high_occurence_graph = filter_graph(gx_all, lambda node: node['occurence']>=min_occurence)
+```
+
+```{python}
+# %time high_occurence_large_sigma_graph = filter_graph(high_occurence_graph1b, lambda node: node['sigma_mask'] >= 4.5)
+# %time high_occurence_large_opt_sigma_graph = filter_graph(high_occurence_graph1b, lambda node: node['sigma_opt'] >= 4.5)
+```
+
+```{python}
+xpaths_high_occ = graph_to_paths(simple_high_occurence_graph)
+colored_paths_high_occ = paths_to_colored_stack(xpaths_high_occ, final_image.shape, change_color_at_branchpoints=False)
+```
+
+```{python}
+xpaths_high_occ1 = graph_to_paths(high_occurence_graph1b)
+colored_paths_high_occ1 = paths_to_colored_stack(xpaths_high_occ1, final_image.shape, change_color_at_branchpoints=False)
+```
+
+```{python}
+colored_paths_high_occ2 = paths_to_colored_stack(graph_to_paths(high_occurence_large_sigma_graph,), final_image.shape, change_color_at_branchpoints=False)
+colored_paths_high_occ3 = paths_to_colored_stack(graph_to_paths(high_occurence_large_opt_sigma_graph,), final_image.shape, change_color_at_branchpoints=False)
+```
+
+```{python}
+w = napari.view_image(final_image, opacity=0.5, ndisplay=3)
+#w.add_image(colored_paths_high_occ1.sum(axis=-1)>0, name='cp-occ1')
+w.add_image(colored_paths_high_occ, channel_axis=3, colormap=['red','green','blue'], name='cp-occ-simple')
+w.add_image(colored_paths_high_occ1, channel_axis=3, colormap=['red','green','blue'], name='cp-occ1')
+w.add_image(colored_paths_high_occ2, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_mask')
+#w.add_image(colored_paths_high_occ3, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_opt')
+```
+
+```{python}
+# иногда выполнение ячейки подвисает и запускается только если выполнить следующую
+# это sham-ячейка для этого 
+_=1
+
+
+```
+
+```{python}
 # %time xpaths_all = graph_to_paths(gx_all)
 ```
 
@@ -1108,10 +1360,25 @@ verbose = True
 
 ```{python}
 if verbose:
-    w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
+    w2 = napari.view_image(final_image, ndisplay=3, opacity=0.5)
     #props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
-    w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
+    w2.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
 ```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+------------
+# Подвал
 
 ```{python}
 selected_nodes = [n for n,v in gx_all.nodes(data=True) if v['sigma_opt']] #and v['sigma_opt']<=4]#v['root'] == (85, 202, 172)]  
