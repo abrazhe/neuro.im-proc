@@ -142,9 +142,10 @@ elif os.path.exists('/home/levtg/astro-morpho'):
 else:
     print("Dont know where to look for the data")
 
-filename = '3wk-both1-grn-raw.pic'
+# filename = '3wk-both1-grn-raw.pic'
+# filename = '4wk-ly9-raw.pic'
 # filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
-# filename = '3wk-ly1-raw.pic'
+filename = '3wk-ly1-raw.pic'
 use_clahe = True
 sigmas = np.arange(0.5, 8, 0.5)
 
@@ -414,7 +415,7 @@ if verbose:
 
 ```{python}
 if HANDY:
-    sigmas = np.arange(0.5, 8, 0.5)
+    sigmas = 2**np.arange(-1, 3, 0.5)
 ```
 
 ```{python}
@@ -475,6 +476,35 @@ for k in range(len(sigmas)-2,-1,-1):
     masks[sigma] = umasks.select_overlapping(masks[sigma], ndi.binary_dilation(masks[sigmas[k+1]], iterations=5))
 ```
 
+Определение оптимальной сигмы
+
+```{python}
+fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
+mask_threshs = {}
+
+for ax, sigma in zip(np.ravel(axs), sigmas):
+    lightness = final_image[masks[sigma]]
+    if sigma < 3:
+        th = 0
+    else:
+        th = -threshold_li(-lightness)
+    mask_threshs[sigma] = th
+    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
+    ax.hist(lightness)
+    ax.axvline(th, color='red')
+```
+
+```{python}
+for sigma, mask in masks.items():
+    masks[sigma] = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
+```
+
+```{python}
+squares = np.array([np.sum(mask) for mask in masks.values()])
+# Клетка-убийца
+plt.scatter(x=sigmas[1:], y=(squares/np.roll(squares,1))[1:])
+```
+
 ```{python}
 if verbose:
     w = napari.view_image(final_image, )
@@ -491,6 +521,7 @@ hout = np.zeros(final_image.shape)
 mask_sum = np.zeros(final_image.shape, dtype=bool)
 
 for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
+# for sigma, sato in tqdm(sorted(sato_coll.items())):
     hcurr = sato
     mask_sum = masks[sigma] | mask_sum
     mask = (hcurr > hout)*mask_sum # restrict search for optimal sigmas by the corresponding mask
@@ -516,6 +547,7 @@ mask_sum = np.zeros(final_image.shape,bool)
 masks_exclusive = {}
 
 for k in range(len(sigmas)-1,-1,-1):
+# for k in range(len(sigmas)):
     sigma = sigmas[k]
     mask = masks[sigma]
     if k < len(sigmas)-1:
@@ -526,9 +558,9 @@ for k in range(len(sigmas)-1,-1,-1):
 ```
 
 ```{python}
-sigma_arr = np.zeros(final_image.shape, dtype=int)
+sigma_mask = np.zeros(final_image.shape, dtype=int)
 for sigma_id, sigma in id2sigma.items():
-    sigma_arr[masks_exclusive[sigma]] = sigma_id
+    sigma_mask[masks_exclusive[sigma]] = sigma_id
 ```
 
 ```{python}
@@ -674,49 +706,14 @@ idx.shape
 ```
 
 ```{python}
-crops_new = prep_crops()
-```
-
-```{python}
-crop,acrop = crops_new[1]
-
-# %time x1 = tensor_cosine_similarity(vectors_best[crop], vectors_best[acrop]);#, idx[crop], idx[acrop]);
-```
-
-```{python}
-# %time W = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], alpha=0.5, return_W=True);
-```
-
-```{python}
-Wflat = W.ravel()
-cond = Wflat < 1
-Sx = 1-Wflat[cond]
-thresholds = [1-threshold_minimum(Sx),
-              1-threshold_li(Sx),
-              1-threshold_triangle(Sx),
-             ]
-```
-
-```{python}
-plt.hist(Wflat, 200, log=True, color='gray');
-plt.title('Distribution of weights in a single direction')
-for th in thresholds:
-    plt.axvline(th, color=np.random.rand(3))
-```
-
-```{python}
-# %time x3 = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], verbose=True);
-```
-
-```{python}
-# %time x3l = list(x3)
+crops = prep_crops()
 ```
 
 ```{python}
 alpha = 0.0
 vectors = vectors_best
 graph = nx.Graph()
-for crop, acrop in tqdm(crops_new):
+for crop, acrop in tqdm(crops):
          graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
 ```
 
@@ -744,7 +741,7 @@ soma_shell_mask = get_shell_mask(soma_mask)
 ```
 
 ```{python}
-for crop, acrop in tqdm(crops_new):
+for crop, acrop in tqdm(crops):
     Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
 ```
 
@@ -791,26 +788,6 @@ def find_paths(G, targets, min_count=1, min_path_length=10):
 
 ```{python}
 all_tips = list(paths_best.keys())
-```
-
-```{python}
-super_tips = dict()
-# массив, проиндексированный корнями, где значение -- листочек с самым длинным путем
-min_length = 1
-for t in all_tips:
-    path = paths_best[t]
-    root = path[-1]
-    L = len(path)
-    if root in super_tips:
-        if L >  super_tips[root][1]:
-            super_tips[root] = (t, L)
-    elif L > min_length:
-        super_tips[root] = (t,L)
-```
-
-```{python}
-key =list(super_tips.keys())[0] 
-key, super_tips[key]
 ```
 
 ```{python}
@@ -910,7 +887,7 @@ def filter_graph(graph, func = lambda node: True ):
 
 ```{python}
 nx.set_node_attributes(gx_all, 
-                       get_attrs_by_nodes(gx_all, sigma_arr, lambda x: id2sigma[x]), 
+                       get_attrs_by_nodes(gx_all, sigma_mask, lambda x: id2sigma[x]), 
                        'sigma_mask')
 ```
 
@@ -990,7 +967,7 @@ high_occurence_graph1b = nx.compose_all(path_to_graph(filtered_paths[t]) for t i
 
 ```{python}
 nx.set_node_attributes(high_occurence_graph1b, 
-                       get_attrs_by_nodes(high_occurence_graph1b, sigma_arr, lambda x: id2sigma[x]), 
+                       get_attrs_by_nodes(high_occurence_graph1b, sigma_mask, lambda x: id2sigma[x]), 
                        'sigma_mask')
 
 nx.set_node_attributes(high_occurence_graph1b, 
@@ -1068,10 +1045,10 @@ def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
 ```
 
 ```{python}
-xpaths_high_occ = graph_to_paths(simple_high_occurence_graph)
-colored_paths_high_occ = paths_to_colored_stack(xpaths_high_occ, 
-                                                final_image.shape, 
-                                                change_color_at_branchpoints=False)
+# xpaths_high_occ = graph_to_paths(simple_high_occurence_graph)
+# colored_paths_high_occ = paths_to_colored_stack(xpaths_high_occ, 
+#                                                 final_image.shape, 
+#                                                 change_color_at_branchpoints=False)
 ```
 
 ```{python}
@@ -1082,12 +1059,12 @@ colored_paths_high_occ1 = paths_to_colored_stack(xpaths_high_occ1,
 ```
 
 ```{python}
-colored_paths_high_occ2 = paths_to_colored_stack(graph_to_paths(high_occurence_large_sigma_graph,), 
-                                                 final_image.shape, 
-                                                 change_color_at_branchpoints=False)
-colored_paths_high_occ3 = paths_to_colored_stack(graph_to_paths(high_occurence_large_opt_sigma_graph,), 
-                                                 final_image.shape, 
-                                                 change_color_at_branchpoints=False)
+# colored_paths_high_occ2 = paths_to_colored_stack(graph_to_paths(high_occurence_large_sigma_graph,), 
+#                                                  final_image.shape, 
+#                                                  change_color_at_branchpoints=False)
+# colored_paths_high_occ3 = paths_to_colored_stack(graph_to_paths(high_occurence_large_opt_sigma_graph,), 
+#                                                  final_image.shape, 
+#                                                  change_color_at_branchpoints=False)
 ```
 
 ```{python}
@@ -1096,7 +1073,7 @@ w = napari.view_image(final_image, opacity=0.5, ndisplay=3)
 # w.add_image(colored_paths_high_occ, channel_axis=3, colormap=['red','green','blue'], name='cp-occ-simple')
 w.add_image(colored_paths_high_occ1, channel_axis=3, colormap=['red','green','blue'], name='cp-occ1')
 # w.add_image(colored_paths_high_occ2, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_mask')
-#w.add_image(colored_paths_high_occ3, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_opt')
+# w.add_image(colored_paths_high_occ3, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_opt')
 ```
 
 ```{python}
@@ -1106,10 +1083,35 @@ _=1
 
 ```
 
-Весь граф
+# Сохранение
 
 ```{python}
-# %time xpaths_all = graph_to_paths(gx_all)
+import pickle
+```
+
+```{python}
+tup2str = lambda x: ','.join(list(map(str, x)))
+str2tup = lambda x: tuple(map(int, x.split(',')))
+```
+
+```{python}
+# with open('graph_3wk-both1-grn-raw.pic.pickle') as fd:
+#     load_graph = pickle.load(fd)
+
+```
+
+```{python}
+# nx.write_gml(simple_high_occurence_graph, 
+#              'gx_all_{}'.format(os.path.basename(filename)), 
+#              stringizer=tup2str)
+```
+
+```{python}
+load_graph = nx.read_gml('graph_3wk-both1-grn-raw.pic.gml', destringizer=str2tup)
+```
+
+```{python}
+# %time xpaths_all = graph_to_paths(load_graph)
 ```
 
 ```{python tags=c()}
@@ -1127,15 +1129,6 @@ if verbose:
     w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
 ```
 
-# Сохранение
-
 ```{python}
-tup2str = lambda x: ','.join(list(map(str, x)))
-str2tup = lambda x: tuple(map(int, x.split(',')))
-```
 
-```{python}
-nx.write_gml(simple_high_occurence_graph, 
-             'gx_all_{}'.format(os.path.basename(filename)), 
-             stringizer=tup2str)
 ```
