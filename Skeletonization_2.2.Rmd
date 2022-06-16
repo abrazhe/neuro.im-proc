@@ -71,10 +71,7 @@ from networx2napari import draw_edges, draw_nodes
 def eu_dist(p1, p2):
     return np.sqrt(np.sum([(x - y)**2 for x, y in zip(p1, p2)]))
 ```
-
-
-
- 
+  
 
 ```{python}
 from collections import defaultdict
@@ -142,10 +139,10 @@ elif os.path.exists('/home/levtg/astro-morpho'):
 else:
     print("Dont know where to look for the data")
 
-# filename = '3wk-both1-grn-raw.pic'
-# filename = '4wk-ly9-raw.pic'
+filename = '3wk-both1-grn-raw.pic' # Test cell
+# filename = '4wk-ly9-raw.pic' # Octopus
 # filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
-filename = '3wk-ly1-raw.pic'
+# filename = '3wk-ly1-raw.pic' # Cell-killer
 use_clahe = True
 sigmas = np.arange(0.5, 8, 0.5)
 
@@ -274,6 +271,10 @@ plt.imshow(img_noisy.max(0), cmap='gray')
 
 ```{python}
 img.shape, img_noisy.shape
+```
+
+```{python}
+# img_noisy = img_cropped
 ```
 
 ## Фильтрация изображения
@@ -495,8 +496,9 @@ for ax, sigma in zip(np.ravel(axs), sigmas):
 ```
 
 ```{python}
-for sigma, mask in masks.items():
-    masks[sigma] = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
+# for sigma, mask in masks.items():
+#     pre_mask = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
+#     masks[sigma] = largest_region(pre_mask)
 ```
 
 ```{python}
@@ -561,6 +563,42 @@ for k in range(len(sigmas)-1,-1,-1):
 sigma_mask = np.zeros(final_image.shape, dtype=int)
 for sigma_id, sigma in id2sigma.items():
     sigma_mask[masks_exclusive[sigma]] = sigma_id
+```
+
+```{python}
+import hessian_vectors as hv
+```
+
+```{python}
+
+```
+
+```{python}
+if verbose:    
+    w = napari.view_image(final_image, )
+    colors = ['red', 'green', 'magenta', 'cyan', 'blue']
+
+    for sigma, color in zip(masks, itt.cycle(colors)):
+        vectors = vectors_best[masks_exclusive[sigma]]
+        nr, nc, nd = final_image.shape
+        indexgrid = np.meshgrid(np.arange(nc), np.arange(nr), np.arange(nd))
+
+        x, y, z = [np.ravel(a[masks_exclusive[sigma]]) for a in indexgrid]
+        x1, y1, z1 = vectors[:,0], vectors[:,1], vectors[:,2]
+        vecs = np.zeros((vectors.shape[0], 2, 3))
+        vecs[..., 0, 0] = y
+        vecs[..., 0, 1] = x
+        vecs[..., 1, 0] = y1
+        vecs[..., 1, 1] = x1
+        vecs[..., 0, 2] = z
+        vecs[..., 1, 2] = z1
+        properties = {'length': hout[masks_exclusive[sigma]]}
+        w.add_vectors(vecs, edge_width=0.2,
+                      length=1,  
+                      properties=properties,
+                      edge_color='length', 
+                      name=f'σ={sigma:02f}', 
+                      edge_colormap=color)
 ```
 
 ```{python}
@@ -863,6 +901,13 @@ def batch_compose_all(tip_paths, batch_size=10000):
 ```
 
 ```{python}
+def filter_graph(graph, func = lambda node: True ):
+    "returns a view on graph for the nodes satisfying the condition defined by func(node)"
+    good_nodes = (node for node in graph.nodes if func(graph.nodes[node]))
+    return graph.subgraph(good_nodes)
+```
+
+```{python}
 # %time gx_all = batch_compose_all(tip_paths)
 ```
 
@@ -876,13 +921,6 @@ def get_attrs_by_nodes(G, arr, func=None):
         func_vect = np.vectorize(func)
         attrs = func_vect(attrs)
     return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
-```
-
-```{python}
-def filter_graph(graph, func = lambda node: True ):
-    "returns a view on graph for the nodes satisfying the condition defined by func(node)"
-    good_nodes = (node for node in graph.nodes if func(graph.nodes[node]))
-    return graph.subgraph(good_nodes)
 ```
 
 ```{python}
@@ -904,6 +942,15 @@ nx.set_node_attributes(gx_all,
 ```
 
 ```{python}
+if verbose:
+    tmp_graph = filter_graph(gx_all, lambda n: n['sigma_mask'] == sigmas[-1])
+    tmp_pos = {node: node for node in tmp_graph.nodes()}
+    w = napari.view_image(final_image)
+    props = {'weight': 1 - np.array([edgedata["weight"] for _, _, edgedata in tmp_graph.edges(data=True)])}
+    w.add_shapes(draw_edges(tmp_pos, tmp_graph.edges()), shape_type='path', edge_color='weight', edge_width=0.1, edge_colormap='inferno', properties=props)
+```
+
+```{python}
 occ_acc = {}
 for sigma in tqdm(sigmas):
     sub = filter_graph(gx_all, lambda node: node['sigma_mask']==sigma)
@@ -911,7 +958,7 @@ for sigma in tqdm(sigmas):
 ```
 
 ```{python}
-fig, axs = plt.subplots(3,5, figsize=(9,6), sharex=True)
+fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
 occ_threshs = {}
 
 for ax, sigma in zip(np.ravel(axs), sigmas):
@@ -1111,7 +1158,7 @@ load_graph = nx.read_gml('graph_3wk-both1-grn-raw.pic.gml', destringizer=str2tup
 ```
 
 ```{python}
-# %time xpaths_all = graph_to_paths(load_graph)
+# %time xpaths_all = graph_to_paths(gx_all)
 ```
 
 ```{python tags=c()}
