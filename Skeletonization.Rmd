@@ -6,11 +6,11 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.7
+      jupytext_version: 1.13.8
   kernelspec:
-    display_name: venv
+    display_name: Python 3 (ipykernel)
     language: python
-    name: venv
+    name: python3
 ---
 
 <!-- #region toc=true -->
@@ -152,8 +152,8 @@ plt.rc('figure', dpi=150)
 
 ```{python tags=c("parameters")}
 #filename = '3wk-both1-grn-raw.pic'
-data_dir = '/home/levtg/astro-morpho/data/'
-# data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+#data_dir = '/home/levtg/astro-morpho/data/'
+data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
 filename = '3wk-both1-grn-raw.pic'
 
 verbose = True
@@ -235,6 +235,13 @@ plt.contour(domain_mask, colors=['r'], levels=[0.5])
 ```
 
 ```{python}
+empty_slice = (slice(None), slice(800,1000), slice(700,1000))
+mean_bg = np.mean(img[empty_slice])
+global_threshold = mean_bg + 3*np.std(img[empty_slice])
+global_threshold
+```
+
+```{python}
 img_cropped = np.array([crop_image(plane,domain_mask, margin=10) for plane in img])
 ```
 
@@ -257,6 +264,8 @@ if verbose:
 
 Важный вопрос, как сделать одинаковым масштаб по осям z и xy. Можно downsample XY, можно upsample (by interpolation) Z. Можно комбинировать. В идеале, наверное, XY не трогать, а сделть upsample по Z. 
 
+**Можно, также, попробовать вообще не делать ресемплинг, а модифицировать сигмы при расчете Сато. Может быть, даже лучше сработает.**
+
 ```{python}
 downscale = 2
 # %time img_noisy = ndi.zoom(img_cropped.astype(np.float32), (zoom/downscale, 1/downscale, 1/downscale), order=1)
@@ -264,6 +273,14 @@ downscale = 2
 
 ```{python}
 plt.imshow(img_noisy.max(0), cmap='gray')
+```
+
+```{python}
+
+```
+
+```{python}
+
 ```
 
 ```{python}
@@ -276,7 +293,8 @@ img.shape, img_noisy.shape
 def filter_image(image, filter_func):
     threshold = filter_func(image)
     #img_filt = np.where(image > threshold, image, 0)
-    binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
+    pre_mask = ndi.binary_closing(image >= threshold)
+    binary_clean = largest_region(remove_small_objects(pre_mask, 5, connectivity=3))
     return np.where(binary_clean, image, 0)
 ```
 
@@ -293,6 +311,15 @@ final_image = img_clear
 
 ```{python}
 final_image.shape
+```
+
+```{python}
+w = napari.view_image(img_noisy)
+w.add_image(final_image, colormap='magenta', blending='additive')
+```
+
+```{python}
+domain_shell_mask0 = ndindi.binary_fill_holes(final_image > 0)
 ```
 
 ```{python}
