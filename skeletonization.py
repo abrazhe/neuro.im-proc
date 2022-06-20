@@ -14,6 +14,8 @@ import networkx as nx
 from pathlib import Path
 from tqdm.auto import tqdm
 
+import pickle
+
 import ccdb
 import astromorpho as astro
 from ucats import masks as umasks
@@ -111,6 +113,13 @@ def filter_image(image, filter_func):
     #img_filt = np.where(image > threshold, image, 0)
     binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
     return np.where(binary_clean, image, 0)
+
+
+def planewise_fill_holes(mask):
+    for k,plane in enumerate(mask):
+        mask[k] = ndi.binary_fill_holes(plane)
+    return mask
+
 
 import itertools as itt
 
@@ -257,6 +266,33 @@ def path_to_graph(path):
 def get_tips(g):
     return {n for n in g.nodes if len(list(g.successors(n))) == 0}
 
+
+def batch_compose_all(tip_paths, batch_size=10000):
+    graphs = []
+    print("Composing...")
+    for i, tp in enumerate(tqdm(tip_paths)):
+        graphs.append(path_to_graph(tp))
+        if i % batch_size == 0:
+            gx_all = nx.compose_all(graphs)
+            graphs = [gx_all]
+    return nx.compose_all(graphs)
+
+
+def get_attrs_by_nodes(G, arr, func=None):
+    nodesG = np.array(G.nodes())
+    attrs = arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
+    if func is not None:
+        func_vect = np.vectorize(func)
+        attrs = func_vect(attrs)
+    return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
+
+
+def filter_graph(graph, func = lambda node: True ):
+    "returns a view on graph for the nodes satisfying the condition defined by func(node)"
+    good_nodes = (node for node in graph.nodes if func(graph.nodes[node]))
+    return graph.subgraph(good_nodes)
+
+
 # def get_roots(g):
 #     return {n for n in g.nodes if len(list(g.predecessors(n))) < 1}
 
@@ -316,6 +352,9 @@ def get_tips(g):
 #                 #print(k, p)
 #                 stack[tuple(p)] = color
 #     return stack
+
+tup2str = lambda x: ','.join(list(map(str, x)))
+str2tup = lambda x: tuple(map(int, x.split(',')))
 
 
 if __name__ == '__main__':
@@ -385,10 +424,12 @@ if __name__ == '__main__':
 
 
     # Расчет матрицы Гессе для различных сигм
-    sigmas = np.arange(args.start, args.end, args.step)
+    sigmas = 2**np.arange(args.start, args.end+args.step, args.step)
+    id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
+    sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
     sato_coll = {}
     Vf_coll = {}
-
+    print("Calculating Hessian...")
     for sigma in tqdm(sigmas):
         #astro.morpho.sato3d is newer and uses tensorflow (if it's installed)
         #optimally, the two variants of sato3d should be merged
@@ -409,10 +450,8 @@ if __name__ == '__main__':
 
 
     # Расчет масок для различных сигм
-    sato = sato_coll[sigmas[1]]#*(final_image)
-    threshold = threshold_li(sato[sato>0])
-    mask = remove_small_objects(sato>threshold, int(sigma*64))
     masks = {}
+    print('Calculating masks...')
     for sigma in tqdm(sigmas):
         sato = sato_coll[sigma]
         threshold = threshold_li(sato[sato>0])*sigma**0.5
@@ -421,6 +460,20 @@ if __name__ == '__main__':
     for k in range(len(sigmas)-2,-1,-1):
         sigma = sigmas[k]
         masks[sigma] = umasks.select_overlapping(masks[sigma], ndi.binary_dilation(masks[sigmas[k+1]], iterations=5))
+
+    # Объединение результатов Сато для различных сигм
+    sigma_sato = np.zeros(final_image.shape, dtype=int)
+    hout = np.zeros(final_image.shape)
+    mask_sum = np.zeros(final_image.shape, dtype=bool)
+
+    print("Merging Sato...")
+    for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
+        hcurr = sato
+        mask_sum = masks[sigma] | mask_sum
+        mask = (hcurr > hout)*mask_sum # restrict search for optimal sigmas by the corresponding mask
+
+        hout[mask] = hcurr[mask]
+        sigma_sato[mask] = sigma2id[sigma]
 
 
     # Объединение собственных векторов различных сигм
@@ -437,38 +490,31 @@ if __name__ == '__main__':
         masks_exclusive[sigma] = mask
         vectors_best[mask] = vectors_coll[sigma][mask]
 
+    # Объединение масок для различных сигм
+    sigma_mask = np.zeros(final_image.shape, dtype=int)
+    for sigma_id, sigma in id2sigma.items():
+        sigma_mask[masks_exclusive[sigma]] = sigma_id
+
 
     # Построение графа
 
     ## Выражение для весов ребер
     i, j, k = np.indices(final_image.shape)
     idx = np.stack((i,j,k), axis=3)
-    crops_new = prep_crops()
-    crop,acrop = crops_new[1]
-
-    x1 = tensor_cosine_similarity(vectors_best[crop], vectors_best[acrop]);#, idx[crop], idx[acrop]);
-    W = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], alpha=0.5, return_W=True);
-
-    Wflat = W.ravel()
-    cond = Wflat < 1
-    Sx = 1-Wflat[cond]
-    thresholds = [1-threshold_minimum(Sx),
-                  1-threshold_li(Sx),
-                  1-threshold_triangle(Sx),
-                 ]
-    x3 = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], verbose=True);
-    x3l = list(x3)
+    crops = prep_crops()
 
     alpha = 0.0
     vectors = vectors_best
     graph = nx.Graph()
-    for crop, acrop in tqdm(crops_new):
+    print('Creating graph...')
+    for crop, acrop in tqdm(crops):
              graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
 
-    ## Добавление точек сомы в граф
+    ## Добавление точек оболочки сомы в граф
     Gsoma = nx.Graph()
     soma_shell_mask = get_shell_mask(soma_mask)
-    for crop, acrop in tqdm(crops_new):
+    print("Adding soma...")
+    for crop, acrop in tqdm(crops):
         Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
 
     for p1, p2, weight in Gsoma.edges(data=True):
@@ -482,21 +528,89 @@ if __name__ == '__main__':
 
     # Расчет путей, встречаемости точек в путях и слияние графов по путям
 
-    qstack_masks = {}
-    qstacks, paths_best = find_paths(graph, soma_shell)
+    qstack, paths_best = find_paths(graph, soma_shell)
     all_tips = list(paths_best.keys())
-    domain_shell = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True, as_points=True)
-    domain_shell = set(domain_shell)
-    tips = [t for t in tqdm(all_tips) if t in domain_shell]
+
+
+    domain_mask3d = ndi.binary_fill_holes(final_image > 0)
+    domain_shell_mask = get_shell_mask(domain_mask3d)
+
+    domain_mask3d = planewise_fill_holes(domain_mask3d)
+
+    domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)
+    domain_mask3d = planewise_fill_holes(domain_mask3d)
+    domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
+
+    domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
+    domain_mask3d = planewise_fill_holes(domain_mask3d)
+    domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
+
+    domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
+
+
+    domain_outer_shell_pts = set(astro.morpho.mask2points(domain_outer_shell_mask))
+    domain_shell_pts = set(astro.morpho.mask2points(domain_shell_mask))
+    print('Making tips...')
+    tips = [t for t in tqdm(all_tips) if t in domain_shell_pts]
     tip_paths = [np.array(paths_best[t]) for t in tips]
 
-    graphs = []
-    for i, tp in tqdm(enumerate(tip_paths)):
-        graphs.append(path_to_graph(tp))
-        if i % 10000 == 0:
-            gx_all = nx.compose_all(graphs)
-            graphs = [gx_all]
-    gx_all = nx.compose_all(graphs) # УРА!!
+    gx_all = batch_compose_all(tip_paths) # УРА!!
+
+    # Добавление сопутствующей информации
+    nx.set_node_attributes(gx_all,
+                           get_attrs_by_nodes(gx_all, sigma_mask, lambda x: id2sigma[x]),
+                           'sigma_mask')
+    nx.set_node_attributes(gx_all,
+                           get_attrs_by_nodes(gx_all, sigma_sato, lambda x: id2sigma[x]),
+                           'sigma_opt')
+    nx.set_node_attributes(gx_all,
+                           get_attrs_by_nodes(gx_all, qstack),
+                           'occurence')
+
+    # Распределения встречаемостей по сигме
+
+    # Попробуем взать только те пути, где встречаемость больше порога на соотв. сигме
+
+    occ_acc = {}
+    print('Filtering occurance')
+    for sigma in tqdm(sigmas):
+        sub = filter_graph(gx_all, lambda node: node['sigma_mask']==sigma)
+        occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
+
+    occ_threshs = {}
+
+    for sigma in sigmas:
+        v_occ = occ_acc[sigma]
+        th = threshold_li(v_occ)
+        occ_threshs[sigma] = th
+
+    high_occ_subs = [filter_graph(gx_all, lambda node: (node['occurence'] >=th) & (node['sigma_mask']==sigma)) for sigma, th in occ_threshs.items()]
+    high_occurence_graph1  = nx.compose_all(high_occ_subs)
+    # Перестроим еще раз граф, но уже используя только узлы из графа `high_occurence_graph1`
+
+    high_occurence_graph1a = graph.subgraph(high_occurence_graph1.nodes) # узлы из изначального графа
+    filtered_soma_shell = [p for p in soma_shell if p in high_occurence_graph1a]
+    qstack2, filtered_paths = find_paths(high_occurence_graph1a, filtered_soma_shell)
+
+    high_occurence_tips = get_tips(high_occurence_graph1) # Кочики веток из предыдущего графа
+    filtered_tips = [t for t in filtered_paths if domain_shell_mask[t] and t in high_occurence_tips]
+
+    # Теперь скомпозируем все обратно и запишем атрибуты
+    print("Composing... Again...")
+    high_occurence_graph1b = nx.compose_all(path_to_graph(filtered_paths[t]) for t in tqdm(filtered_tips))
+
+    nx.set_node_attributes(high_occurence_graph1b,
+                           get_attrs_by_nodes(high_occurence_graph1b, sigma_mask, lambda x: id2sigma[x]),
+                           'sigma_mask')
+    nx.set_node_attributes(high_occurence_graph1b,
+                           get_attrs_by_nodes(high_occurence_graph1b, sigma_sato, lambda x: id2sigma[x]),
+                           'sigma_opt')
+    nx.set_node_attributes(high_occurence_graph1b,
+                           get_attrs_by_nodes(high_occurence_graph1b, qstack),
+                           'occurence')
+
+    final_graph = high_occurence_graph1b
+
 
     # xpaths_all = graph_to_paths(gx_all)
     # colored_paths_all = paths_to_colored_stack(xpaths_all, final_image.shape, change_color_at_branchpoints=False)
@@ -505,3 +619,13 @@ if __name__ == '__main__':
     # #props = {'path-id': ['line'+str(i) for i in np.arange(len(xpaths))]}
     # w.add_image(colored_paths_all,  channel_axis=3, colormap=['red','green','blue'], name='cp_all')
     # napari.run()
+
+    output_filename = '{}graph_{}{}'.format(args.prefix, os.path.basename(filename), args.suffix)
+    if args.save_type == 'gml':
+        nx.write_gml(final_graph, output_filename + '.gml', tup2str)
+    elif args.save_type == 'pickle':
+        with open(output_filename + '.pickle', 'wb') as f:
+            pickle.dump(final_graph, f)
+    else:
+        print('ERROR!! Please choose save type: gml or pickle')
+        exit()
