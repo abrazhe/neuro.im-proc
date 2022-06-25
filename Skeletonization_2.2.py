@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # <h1>Table of Contents<span class="tocSkip"></span></h1>
-# <div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span></li><li><span><a href="#Предобработка-изображения" data-toc-modified-id="Предобработка-изображения-4">Предобработка изображения</a></span><ul class="toc-item"><li><span><a href="#CLAHE" data-toc-modified-id="CLAHE-4.1">CLAHE</a></span></li><li><span><a href="#Кадрирование" data-toc-modified-id="Кадрирование-4.2">Кадрирование</a></span></li><li><span><a href="#Масштабирование" data-toc-modified-id="Масштабирование-4.3">Масштабирование</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4.4">Фильтрация изображения</a></span></li></ul></li><li><span><a href="#Сегментация-сомы" data-toc-modified-id="Сегментация-сомы-5">Сегментация сомы</a></span><ul class="toc-item"><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.1">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.2">Выделение сомы</a></span></li></ul></li><li><span><a href="#Расчет-матрицы-Гессе-для-различных-сигм" data-toc-modified-id="Расчет-матрицы-Гессе-для-различных-сигм-6">Расчет матрицы Гессе для различных сигм</a></span></li><li><span><a href="#Расчет-масок-для-различных-сигм" data-toc-modified-id="Расчет-масок-для-различных-сигм-7">Расчет масок для различных сигм</a></span></li><li><span><a href="#Объединение-собственных-векторов-различных-сигм" data-toc-modified-id="Объединение-собственных-векторов-различных-сигм-8">Объединение собственных векторов различных сигм</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-9">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выражение-для-весов-ребер" data-toc-modified-id="Выражение-для-весов-ребер-9.1">Выражение для весов ребер</a></span></li><li><span><a href="#Добавление-точек-сомы-в-граф" data-toc-modified-id="Добавление-точек-сомы-в-граф-9.2">Добавление точек сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям" data-toc-modified-id="Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям-10">Расчет путей, встречаемости точек в путях и слияние графов по путям</a></span><ul class="toc-item"><li><span><a href="#Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph" data-toc-modified-id="Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph-10.1">Building all paths at once, using the "best-scale" full graph</a></span></li><li><span><a href="#Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs" data-toc-modified-id="Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs-10.2">Converting paths to directed graphs, merging and visualizing the graphs</a></span></li></ul></li></ul></div>
+# <div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span></li><li><span><a href="#Предобработка-изображения" data-toc-modified-id="Предобработка-изображения-4">Предобработка изображения</a></span><ul class="toc-item"><li><span><a href="#CLAHE" data-toc-modified-id="CLAHE-4.1">CLAHE</a></span></li><li><span><a href="#Кадрирование" data-toc-modified-id="Кадрирование-4.2">Кадрирование</a></span></li><li><span><a href="#Масштабирование" data-toc-modified-id="Масштабирование-4.3">Масштабирование</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4.4">Фильтрация изображения</a></span></li></ul></li><li><span><a href="#Сегментация-сомы" data-toc-modified-id="Сегментация-сомы-5">Сегментация сомы</a></span><ul class="toc-item"><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.1">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.2">Выделение сомы</a></span></li></ul></li><li><span><a href="#Расчет-матрицы-Гессе-для-различных-сигм" data-toc-modified-id="Расчет-матрицы-Гессе-для-различных-сигм-6">Расчет матрицы Гессе для различных сигм</a></span></li><li><span><a href="#Расчет-масок-для-различных-сигм" data-toc-modified-id="Расчет-масок-для-различных-сигм-7">Расчет масок для различных сигм</a></span></li><li><span><a href="#Объединение-результатов-Сато-для-различных-сигм" data-toc-modified-id="Объединение-результатов-Сато-для-различных-сигм-8">Объединение результатов Сато для различных сигм</a></span></li><li><span><a href="#Объединение-собственных-векторов-различных-сигм" data-toc-modified-id="Объединение-собственных-векторов-различных-сигм-9">Объединение собственных векторов различных сигм</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-10">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выражение-для-весов-ребер" data-toc-modified-id="Выражение-для-весов-ребер-10.1">Выражение для весов ребер</a></span></li><li><span><a href="#Добавление-точек-оболочки-сомы-в-граф" data-toc-modified-id="Добавление-точек-оболочки-сомы-в-граф-10.2">Добавление точек оболочки сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям" data-toc-modified-id="Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям-11">Расчет путей, встречаемости точек в путях и слияние графов по путям</a></span><ul class="toc-item"><li><span><a href="#Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph" data-toc-modified-id="Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph-11.1">Building all paths at once, using the "best-scale" full graph</a></span></li><li><span><a href="#Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs" data-toc-modified-id="Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs-11.2">Converting paths to directed graphs, merging and visualizing the graphs</a></span></li></ul></li><li><span><a href="#Добавление-сопутствующей-информации" data-toc-modified-id="Добавление-сопутствующей-информации-12">Добавление сопутствующей информации</a></span></li><li><span><a href="#Распределения-встречаемостей-по-сигме" data-toc-modified-id="Распределения-встречаемостей-по-сигме-13">Распределения встречаемостей по сигме</a></span><ul class="toc-item"><li><span><a href="#Визуализация" data-toc-modified-id="Визуализация-13.1">Визуализация</a></span></li></ul></li><li><span><a href="#Сохранение" data-toc-modified-id="Сохранение-14">Сохранение</a></span></li></ul></div>
 
 # # **Next actions and TODOs**
 #  - [ ] Test performance on other cells
@@ -150,18 +150,25 @@ plt.rc('figure', dpi=150)
 
 # # Параметры для запуска
 
-# In[58]:
+# In[15]:
 
 
-#filename = '3wk-both1-grn-raw.pic'
-data_dir = '/home/levtg/astro-morpho/data/'
-# data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
-filename = '3wk-both1-grn-raw.pic'
-# filename = '3wk-ly1-raw.pic'
+if os.path.exists('/home/brazhe/yadisk/'):
+    data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+
+elif os.path.exists('/home/levtg/astro-morpho'):
+    data_dir = '/home/levtg/astro-morpho/data/'
+else:
+    print("Dont know where to look for the data")
+
+filename = '3wk-both1-grn-raw.pic' # Test cell
+# filename = '4wk-ly9-raw.pic' # Octopus
+# filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
+# filename = '3wk-ly1-raw.pic' # Cell-killer
 use_clahe = True
+sigmas = np.arange(0.5, 8, 0.5)
 
 verbose = True
-sigma = 2
 
 # Set false to start from console
 HANDY = True
@@ -170,7 +177,7 @@ HANDY = True
 OUT = False
 
 
-# In[59]:
+# In[16]:
 
 
 filename = Path(data_dir).joinpath(filename)
@@ -179,7 +186,7 @@ filename
 
 # # Считывание изображения
 
-# In[60]:
+# In[17]:
 
 
 if HANDY:
@@ -187,7 +194,7 @@ if HANDY:
 #     filename = '/home/levtg/astro-morpho/data/3wk-ly10-raw.pic'
 
 
-# In[61]:
+# In[18]:
 
 
 stack, meta = ccdb.read_pic(filename)
@@ -195,7 +202,7 @@ dims = ccdb.get_axes(meta)
 dims
 
 
-# In[62]:
+# In[19]:
 
 
 if len(dims):
@@ -210,13 +217,13 @@ print(zoom)
 
 # ## CLAHE
 
-# In[63]:
+# In[20]:
 
 
 clahe = cv2.createCLAHE(clipLimit =2.0, tileGridSize=(8,8))
 
 
-# In[64]:
+# In[21]:
 
 
 stack_shape = stack.shape
@@ -225,7 +232,7 @@ for k,plane in enumerate(stack):
     img_clahe[k] = clahe.apply(plane)
 
 
-# In[65]:
+# In[22]:
 
 
 if verbose:
@@ -233,7 +240,7 @@ if verbose:
     wi.add_image(img_clahe, scale=(zoom,1,1), name='CLAHE',colormap='magenta')
 
 
-# In[66]:
+# In[23]:
 
 
 plt.figure()
@@ -243,7 +250,7 @@ plt.title("Effect of CLAHE on stack histogram")
 plt.legend()
 
 
-# In[67]:
+# In[24]:
 
 
 # check if use clahe or not
@@ -252,33 +259,33 @@ img = img_clahe if use_clahe else stack
 
 # ## Кадрирование
 
-# In[68]:
+# In[25]:
 
 
 max_proj = img.max(0)
 
 
-# In[69]:
+# In[26]:
 
 
 domain_mask = ndi.binary_dilation(largest_region(remove_small_objects(max_proj > 0.5*threshold_li(max_proj))), iterations=3)
 domain_mask = ndi.binary_closing(domain_mask,iterations=3)
 
 
-# In[70]:
+# In[27]:
 
 
 plt.imshow(max_proj, cmap='gray')
 plt.contour(domain_mask, colors=['r'], levels=[0.5])
 
 
-# In[71]:
+# In[28]:
 
 
 img_cropped = np.array([crop_image(plane,domain_mask, margin=10) for plane in img])
 
 
-# In[72]:
+# In[29]:
 
 
 max_proj_1 = img_cropped.max(1)
@@ -288,13 +295,13 @@ plt.imshow(max_proj_1, cmap='gray')
 plt.contour(domain_mask_1, colors=['r'], levels=[0.5])
 
 
-# In[73]:
+# In[30]:
 
 
 img_cropped = np.array([crop_image(img_cropped[:,i],domain_mask_1, margin=10) for i in range(img_cropped.shape[1])]).swapaxes(0,1)
 
 
-# In[74]:
+# In[31]:
 
 
 if verbose:
@@ -305,61 +312,113 @@ if verbose:
 
 # Важный вопрос, как сделать одинаковым масштаб по осям z и xy. Можно downsample XY, можно upsample (by interpolation) Z. Можно комбинировать. В идеале, наверное, XY не трогать, а сделать upsample по Z. 
 
-# In[75]:
+# In[32]:
 
 
 downscale = 2
 get_ipython().run_line_magic('time', 'img_noisy = ndi.zoom(img_cropped.astype(np.float32), (zoom/downscale, 1/downscale, 1/downscale), order=1)')
 
 
-# In[76]:
+# In[33]:
 
 
 plt.imshow(img_noisy.max(0), cmap='gray')
 
 
-# In[77]:
+# In[34]:
 
 
 img.shape, img_noisy.shape
 
 
+# In[35]:
+
+
+# img_noisy = img_cropped
+
+
 # ## Фильтрация изображения
 
-# In[78]:
+# In[36]:
 
 
 def filter_image(image, filter_func):
     threshold = filter_func(image)
     #img_filt = np.where(image > threshold, image, 0)
-    binary_clean = remove_small_objects(image >= threshold, 5, connectivity=3)
+    pre_mask = ndi.binary_closing(image >= threshold)
+    pre_mask = remove_small_objects(pre_mask, 5, connectivity=3)
+    binary_clean = largest_region(pre_mask)
     return np.where(binary_clean, image, 0)
 
 
-# In[79]:
+# In[37]:
 
 
 img_clear = filter_image(img_noisy, threshold_li)
 
 
-# In[80]:
+# In[38]:
 
 
 final_image = img_clear
 final_image.shape
 
 
+# In[39]:
+
+
+domain_mask3d = ndi.binary_fill_holes(final_image > 0)
+domain_shell_mask = get_shell_mask(domain_mask3d)
+
+
+# In[40]:
+
+
+def planewise_fill_holes(mask):
+    for k,plane in enumerate(mask):
+        mask[k] = ndi.binary_fill_holes(plane)
+    return mask
+
+    
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+
+domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)   
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
+
+
+domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
+
+
+# In[41]:
+
+
+domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
+
+
+# In[42]:
+
+
+if verbose:
+    w = napari.view_image(img_noisy)
+    w.add_image(final_image, colormap='magenta', blending='additive')
+    w.add_image(domain_shell_mask, colormap='green', blending='additive')
+    w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
+
+
 # # Сегментация сомы
 
 # ## Определение центра
 
-# In[81]:
+# In[43]:
 
 
 import itertools as itt
 
 
-# In[82]:
+# In[44]:
 
 
 def percentile_rescale(arr, plow=1, phigh=99.5):
@@ -370,7 +429,7 @@ def percentile_rescale(arr, plow=1, phigh=99.5):
         return np.clip((arr-low)/(high-low), 0, 1)
 
 
-# In[83]:
+# In[45]:
 
 
 def flat_indices(shape):
@@ -378,19 +437,19 @@ def flat_indices(shape):
     return np.hstack([np.ravel(x_)[:,None] for x_ in idx])
 
 
-# In[84]:
+# In[46]:
 
 
 X1a = flat_indices(final_image.shape)
 
 
-# In[85]:
+# In[47]:
 
 
 get_ipython().run_line_magic('time', 'weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image,5))**2,plow=99.5,phigh=99.99)')
 
 
-# In[86]:
+# In[48]:
 
 
 center = tuple(map(int, np.sum(X1a*weights_s[:,None],axis=0)/np.sum(weights_s)))
@@ -399,13 +458,13 @@ center
 
 # ## Выделение сомы
 
-# In[87]:
+# In[49]:
 
 
 from skimage.morphology import dilation, skeletonize, flood
 
 
-# In[88]:
+# In[50]:
 
 
 from astromorpho import morpho
@@ -416,7 +475,7 @@ from astromorpho import morpho
 # 2. делаем первичную маску как flood из центра с толерантностью в 10% разницы между максимальным и минимальным значениями в стеке
 # 3. Разрастаем (аналог flood) первичную маску в несколько итераций
 
-# In[89]:
+# In[51]:
 
 
 #soma_mask = largest_region(np.where(dilation(eroded), True, False))
@@ -429,13 +488,13 @@ print('tol:',tol)
 get_ipython().run_line_magic('time', 'soma_seed_mask = flood(smooth_stack, center, tolerance=tol)')
 
 
-# In[90]:
+# In[52]:
 
 
 get_ipython().run_line_magic('time', 'soma_mask = morpho.expand_mask(soma_seed_mask, smooth_stack, iterations = 10)')
 
 
-# In[91]:
+# In[53]:
 
 
 if verbose:
@@ -444,7 +503,7 @@ if verbose:
     w.add_image(soma_mask, blending='additive', colormap='magenta')
 
 
-# In[92]:
+# In[54]:
 
 
 get_ipython().run_line_magic('time', 'soma_shell = get_shell_mask(soma_mask, as_points=True)')
@@ -452,26 +511,28 @@ get_ipython().run_line_magic('time', 'soma_shell = get_shell_mask(soma_mask, as_
 
 # # Расчет матрицы Гессе для различных сигм
 
-# In[93]:
+# In[55]:
 
 
-sigmas = 2.0**np.arange(-1, 3.5, 0.5)
+if HANDY:
+    sigmas = 2**np.arange(-1, 3, 0.5)
 
 
-# In[94]:
+# In[56]:
 
 
-qstacks = {}
+id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
+sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
 
 
-# In[95]:
+# In[57]:
 
 
 sato_coll = {}
 Vf_coll = {}
 
 
-# In[96]:
+# In[58]:
 
 
 for sigma in tqdm(sigmas):
@@ -479,24 +540,17 @@ for sigma in tqdm(sigmas):
     #optimally, the two variants of sato3d should be merged
     sato, Vf = astro.morpho.sato3d(final_image, sigma, hessian_variant='gradient_of_smoothed', do_brightness_correction=False, return_vectors=True)
     sato_coll[sigma] = (sato*sigma**2)*(final_image > 0)
-    #sato_coll[sigma] = final_image*sato*sigma**2
-    #sato_coll[sigma] = sato*(final_image>0)
     Vf_coll[sigma] = Vf[...,0][...,::-1]
 
 
-# In[97]:
+# In[59]:
 
 
 lengths_coll = {sigma: astro.enh.percentile_rescale(sato)**0.5 for sigma, sato in sato_coll.items()}
-
-
-# In[98]:
-
-
 vectors_coll = {}
 
 
-# In[99]:
+# In[60]:
 
 
 for sigma in Vf_coll:
@@ -510,38 +564,29 @@ for sigma in Vf_coll:
 
 # # Расчет масок для различных сигм
 
-# In[100]:
+# In[61]:
 
 
 from ucats import masks as umasks
 
 
-# In[101]:
-
-
-sato = sato_coll[sigmas[1]]#*(final_image)
-threshold = threshold_li(sato[sato>0])
-mask = remove_small_objects(sato>threshold, int(sigma*64))
-
-
-# In[102]:
+# In[62]:
 
 
 masks = {}
 for sigma in tqdm(sigmas):
     sato = sato_coll[sigma]
     threshold = threshold_li(sato[sato>0])*sigma**0.5
-#     print(sigma, threshold)
     masks[sigma] = remove_small_objects(sato > threshold, min_size=int(sigma*64))
 
 
-# In[103]:
+# In[63]:
 
 
 masks[sigmas[-1]] = umasks.select_overlapping(masks[sigmas[-1]], soma_mask)
 
 
-# In[104]:
+# In[64]:
 
 
 for k in range(len(sigmas)-2,-1,-1):
@@ -549,7 +594,43 @@ for k in range(len(sigmas)-2,-1,-1):
     masks[sigma] = umasks.select_overlapping(masks[sigma], ndi.binary_dilation(masks[sigmas[k+1]], iterations=5))
 
 
-# In[105]:
+# Определение оптимальной сигмы
+
+# In[65]:
+
+
+fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
+mask_threshs = {}
+
+for ax, sigma in zip(np.ravel(axs), sigmas):
+    lightness = final_image[masks[sigma]]
+    if sigma < 3:
+        th = 0
+    else:
+        th = -threshold_li(-lightness)
+    mask_threshs[sigma] = th
+    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
+    ax.hist(lightness)
+    ax.axvline(th, color='red')
+
+
+# In[124]:
+
+
+for sigma, mask in masks.items():
+    pre_mask = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
+    masks[sigma] = largest_region(pre_mask)
+
+
+# In[125]:
+
+
+squares = np.array([np.sum(mask) for mask in masks.values()])
+# Клетка-убийца
+plt.scatter(x=sigmas[1:], y=(squares/np.roll(squares,1))[1:])
+
+
+# In[126]:
 
 
 if verbose:
@@ -559,9 +640,39 @@ if verbose:
         w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}', colormap='red')
 
 
+# # Объединение результатов Сато для различных сигм
+
+# In[127]:
+
+
+sigma_sato = np.zeros(final_image.shape, dtype=int)
+hout = np.zeros(final_image.shape)
+mask_sum = np.zeros(final_image.shape, dtype=bool)
+
+for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
+# for sigma, sato in tqdm(sorted(sato_coll.items())):
+    hcurr = sato
+    mask_sum = masks[sigma] | mask_sum
+    mask = (hcurr > hout)*mask_sum # restrict search for optimal sigmas by the corresponding mask
+    
+    hout[mask] = hcurr[mask]
+    sigma_sato[mask] = sigma2id[sigma]
+
+
+# In[70]:
+
+
+if verbose:
+    idx = 10
+    w = napari.view_image(final_image)
+    w.add_image(sigma_sato==idx)
+    w.add_image(masks[id2sigma[idx]])
+    w.add_image(sigma_sato)
+
+
 # # Объединение собственных векторов различных сигм
 
-# In[106]:
+# In[130]:
 
 
 vectors_best = np.zeros(vectors_coll[sigmas[0]].shape)
@@ -569,6 +680,7 @@ mask_sum = np.zeros(final_image.shape,bool)
 masks_exclusive = {}
 
 for k in range(len(sigmas)-1,-1,-1):
+# for k in range(len(sigmas)):
     sigma = sigmas[k]
     mask = masks[sigma]
     if k < len(sigmas)-1:
@@ -578,7 +690,15 @@ for k in range(len(sigmas)-1,-1,-1):
     vectors_best[mask] = vectors_coll[sigma][mask]
 
 
-# In[107]:
+# In[131]:
+
+
+sigma_mask = np.zeros(final_image.shape, dtype=int)
+for sigma_id, sigma in id2sigma.items():
+    sigma_mask[masks_exclusive[sigma]] = sigma_id
+
+
+# In[132]:
 
 
 if verbose:    
@@ -630,7 +750,7 @@ if verbose:
 #        "тренироваться" пути вдоль больших веток. 
 #        Потом можно брать просто сумму qstacks для разных масштабов, маску можно брать как объединение всех масок на разных уровнях или снова как надпороговые пиксели. 
 
-# In[108]:
+# In[133]:
 
 
 def prep_crops():
@@ -645,7 +765,7 @@ def prep_crops():
     return crops_new
 
 
-# In[109]:
+# In[134]:
 
 
 def tensor_cosine_similarity(U, V, return_norms=False):
@@ -718,21 +838,7 @@ def calc_edges(U, V, index1, index2, alpha=0.0, do_threshold=True, return_W=Fals
     
 
 
-# In[110]:
-
-
-graph_coll = {sigma:nx.Graph() for sigma in  sigmas}
-nodes_coll = {sigma:{} for sigma in sigmas}
-
-
-# In[111]:
-
-
-graph_coll['best'] = nx.Graph()
-nodes_coll['best'] = {}
-
-
-# In[112]:
+# In[135]:
 
 
 i, j, k = np.indices(final_image.shape)
@@ -740,73 +846,25 @@ idx = np.stack((i,j,k), axis=3)
 idx.shape
 
 
-# In[113]:
+# In[136]:
 
 
-crops_new = prep_crops()
+crops = prep_crops()
 
 
-# In[114]:
+# In[137]:
 
 
-crop,acrop = crops_new[1]
-
-get_ipython().run_line_magic('time', 'x1 = tensor_cosine_similarity(vectors_best[crop], vectors_best[acrop]);#, idx[crop], idx[acrop]);')
-
-
-# In[115]:
-
-
-get_ipython().run_line_magic('time', 'W = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], alpha=0.5, return_W=True);')
-
-
-# In[116]:
-
-
-Wflat = W.ravel()
-cond = Wflat < 1
-Sx = 1-Wflat[cond]
-thresholds = [1-threshold_minimum(Sx),
-              1-threshold_li(Sx),
-              1-threshold_triangle(Sx),
-             ]
-
-
-# In[117]:
-
-
-plt.hist(Wflat, 200, log=True, color='gray');
-plt.title('Distribution of weights in a single direction')
-for th in thresholds:
-    plt.axvline(th, color=np.random.rand(3))
-
-
-# In[118]:
-
-
-get_ipython().run_line_magic('time', 'x3 = calc_edges(vectors_best[crop], vectors_best[acrop], idx[crop], idx[acrop], verbose=True);')
-
-
-# In[119]:
-
-
-get_ipython().run_line_magic('time', 'x3l = list(x3)')
-
-
-# In[120]:
-
-
-key='best'
 alpha = 0.0
 vectors = vectors_best
-graph_coll[key] = nx.Graph()
-for crop, acrop in tqdm(crops_new):
-         graph_coll[key].add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
+graph = nx.Graph()
+for crop, acrop in tqdm(crops):
+         graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], idx[crop], idx[acrop], alpha=alpha))
 
 
-# ## Добавление точек сомы в граф
+# ## Добавление точек оболочки сомы в граф
 
-# In[121]:
+# In[138]:
 
 
 def get_mask_vals(idxs, mask):
@@ -814,7 +872,7 @@ def get_mask_vals(idxs, mask):
     return idxs[idx_mask]
 
 
-# In[122]:
+# In[139]:
 
 
 def get_edges(mask, index1, index2, weight):
@@ -823,40 +881,40 @@ def get_edges(mask, index1, index2, weight):
     return zip(idx1, idx2, np.full(len(idx1), weight))
 
 
-# In[123]:
+# In[140]:
 
 
 Gsoma = nx.Graph()
 
 
-# In[124]:
+# In[141]:
 
 
 soma_shell_mask = get_shell_mask(soma_mask)
 
 
-# In[125]:
+# In[142]:
 
 
-for crop, acrop in tqdm(crops_new):
+for crop, acrop in tqdm(crops):
     Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
 
 
-# In[126]:
+# In[143]:
 
 
-get_ipython().run_cell_magic('time', '', "for G in graph_coll.values():\n    for p1, p2, weight in Gsoma.edges(data=True):\n        try:\n            old_weight = G.get_edge_data(p1, p2)['weight']\n        except Exception as exc:\n            old_weight = 1\n        G.add_edge(p1, p2, weight=min(weight['weight'], old_weight))")
+get_ipython().run_cell_magic('time', '', "\nfor p1, p2, weight in Gsoma.edges(data=True):\n    try:\n        old_weight = graph.get_edge_data(p1, p2)['weight']\n    except Exception as exc:\n        old_weight = 1\n    graph.add_edge(p1, p2, weight=min(weight['weight'], old_weight))")
 
 
-# In[127]:
+# In[144]:
 
 
-nodes_coll = {key:{n:n for n in G.nodes()} for key, G in graph_coll.items()} # just a copy of G3 nodes
+nodes = {n:n for n in graph.nodes()}
 
 
 # # Расчет путей, встречаемости точек в путях и слияние графов по путям
 
-# In[128]:
+# In[145]:
 
 
 from copy import copy
@@ -876,58 +934,48 @@ def find_paths(G, targets, min_count=1, min_path_length=10):
     return qstack, paths_dict
 
 
-# In[129]:
-
-
-qstack_masks = {}
-
-
 # ## Building all paths at once, using the "best-scale" full graph
 
-# In[130]:
+# In[146]:
 
 
-get_ipython().run_line_magic('time', "qstacks['best'], paths_best = find_paths(graph_coll['best'], soma_shell)")
-#qstack_masks['best'] = qstacks['best'] > threshold_li(qstacks['best'][qstacks['best']>0])
+get_ipython().run_line_magic('time', 'qstack, paths_best = find_paths(graph, soma_shell)')
 
 
-# In[131]:
+# In[147]:
 
 
 all_tips = list(paths_best.keys())
 
 
-# In[137]:
+# In[148]:
 
 
-domain_shell_mask = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True)
+if verbose:
+    w = napari.view_image(final_image)
+    w.add_image(qstack)
 
 
-# In[138]:
+# In[149]:
 
 
-domain_shell = get_shell_mask(masks_exclusive[np.min(sigmas)], do_skeletonize=True, as_points=True)
+domain_outer_shell_pts = set(astro.morpho.mask2points(domain_outer_shell_mask))
+domain_shell_pts = set(astro.morpho.mask2points(domain_shell_mask))
 
 
-# In[139]:
+# In[150]:
 
 
-domain_shell = set(domain_shell) 
+tips = [t for t in tqdm(all_tips) if t in domain_shell_pts]
 
 
-# In[140]:
+# In[151]:
 
 
-tips = [t for t in tqdm(all_tips) if t in domain_shell]
+len(tips), len(domain_outer_shell_pts)
 
 
-# In[141]:
-
-
-len(tips), len(domain_shell)
-
-
-# In[142]:
+# In[152]:
 
 
 tip_paths = [np.array(paths_best[t]) for t in tips]
@@ -935,17 +983,16 @@ tip_paths = [np.array(paths_best[t]) for t in tips]
 
 # ## Converting paths to directed graphs, merging and visualizing the graphs
 
-# In[143]:
+# In[153]:
 
 
 def path_to_graph(path):
     "Converts an ordered list of points (path) into a directed graph"
     g = nx.DiGraph()
-    tp = tip_paths[0]
-    
+    root = tuple(path[-1])
     for k,p in enumerate(path):
         tp = tuple(p)
-        g.add_node(tp) 
+        g.add_node(tp, root=root) 
         if k > 0:
             g.add_edge(tp, tuple(path[k-1]), weight=1)
     return g
@@ -974,26 +1021,184 @@ def get_branch_points(g):
     return {n for n in gx.nodes if len(list(gx.successors(n))) > 1}            
 
 
-# In[144]:
+# In[154]:
 
 
-# graphs = [path_to_graph(tp) for tp in tqdm(tip_paths)]
+def batch_compose_all(tip_paths, batch_size=10000):
+    graphs = []
+    for i, tp in enumerate(tqdm(tip_paths)):
+        graphs.append(path_to_graph(tp))
+        if i % batch_size == 0:
+            gx_all = nx.compose_all(graphs)
+            graphs = [gx_all]
+    return nx.compose_all(graphs)    
 
 
-# In[145]:
+# In[155]:
 
 
-get_ipython().run_line_magic('time', '')
-graphs = []
-for i, tp in tqdm(enumerate(tip_paths)):
-    graphs.append(path_to_graph(tp))
-    if i % 10000 == 0:
-        gx_all = nx.compose_all(graphs)
-        graphs = [gx_all]
-gx_all = nx.compose_all(graphs)
+get_ipython().run_line_magic('time', 'gx_all = batch_compose_all(tip_paths)')
 
 
-# In[152]:
+# # Добавление сопутствующей информации
+
+# In[156]:
+
+
+def get_attrs_by_nodes(G, arr, func=None):
+    nodesG = np.array(G.nodes())
+    attrs = arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
+    if func is not None:
+        func_vect = np.vectorize(func)
+        attrs = func_vect(attrs)
+    return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
+
+
+# In[157]:
+
+
+def filter_graph(graph, func = lambda node: True ):
+    "returns a view on graph for the nodes satisfying the condition defined by func(node)"
+    good_nodes = (node for node in graph.nodes if func(graph.nodes[node]))
+    return graph.subgraph(good_nodes)
+
+
+# In[158]:
+
+
+nx.set_node_attributes(gx_all, 
+                       get_attrs_by_nodes(gx_all, sigma_mask, lambda x: id2sigma[x]), 
+                       'sigma_mask')
+
+
+# In[159]:
+
+
+nx.set_node_attributes(gx_all, 
+                       get_attrs_by_nodes(gx_all, sigma_sato, lambda x: id2sigma[x]), 
+                       'sigma_opt')
+
+
+# In[160]:
+
+
+nx.set_node_attributes(gx_all, 
+                       get_attrs_by_nodes(gx_all, qstack), 
+                       'occurence')
+
+
+# In[161]:
+
+
+occ_acc = {}
+for sigma in tqdm(sigmas):
+    sub = filter_graph(gx_all, lambda node: node['sigma_mask']==sigma)
+    occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
+
+
+# In[162]:
+
+
+fig, axs = plt.subplots(3,5, figsize=(9,6), sharex=True)
+occ_threshs = {}
+
+for ax, sigma in zip(np.ravel(axs), sigmas):
+    v_occ = occ_acc[sigma]
+    th = threshold_li(v_occ)
+    occ_threshs[sigma] = th
+    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
+    ax.hist(v_occ, 50)
+    ax.axvline(th, color='red')
+
+
+# # Распределения встречаемостей по сигме
+
+# Попробуем взать только те пути, где встречаемость больше порога на соотв. сигме
+
+# In[163]:
+
+
+get_ipython().run_line_magic('time', "high_occ_subs = [filter_graph(gx_all, lambda node: (node['occurence'] >=th) & (node['sigma_mask']==sigma)) for sigma, th in occ_threshs.items()]")
+get_ipython().run_line_magic('time', 'high_occurence_graph1  = nx.compose_all(high_occ_subs)')
+
+
+# Проблема в том, что в получившимся графе многие ветки оказались отрезанными от сомы. Придется пересчитать пути до поверхности сомы. Но ребер-то между разрезанными ветками нет :) 
+# ПОэтому перестроим еще раз граф, но уже используя только узлы из графа `high_occurence_graph1`
+
+# In[164]:
+
+
+high_occurence_graph1a = graph.subgraph(high_occurence_graph1.nodes) # узлы из изначального графа
+
+
+# In[165]:
+
+
+filtered_soma_shell = [p for p in soma_shell if p in high_occurence_graph1a]
+len(filtered_soma_shell)
+
+
+# In[166]:
+
+
+qstack2, filtered_paths = find_paths(high_occurence_graph1a, filtered_soma_shell)
+
+
+# In[167]:
+
+
+high_occurence_tips = get_tips(high_occurence_graph1) # Кочики веток из предыдущего графа
+len(high_occurence_tips)
+
+
+# In[168]:
+
+
+filtered_tips = [t for t in filtered_paths if domain_shell_mask[t] and t in high_occurence_tips]
+len(filtered_tips), len(filtered_paths)
+
+
+# Теперь скомпозируем все обратно и запишем атрибуты
+
+# In[169]:
+
+
+high_occurence_graph1b = nx.compose_all(path_to_graph(filtered_paths[t]) for t in tqdm(filtered_tips))
+
+
+# In[170]:
+
+
+nx.set_node_attributes(high_occurence_graph1b, 
+                       get_attrs_by_nodes(high_occurence_graph1b, sigma_mask, lambda x: id2sigma[x]), 
+                       'sigma_mask')
+
+nx.set_node_attributes(high_occurence_graph1b, 
+                       get_attrs_by_nodes(high_occurence_graph1b, sigma_sato, lambda x: id2sigma[x]), 
+                       'sigma_opt')
+
+nx.set_node_attributes(high_occurence_graph1b, 
+                       get_attrs_by_nodes(high_occurence_graph1b, qstack), 
+                       'occurence')
+
+
+# In[171]:
+
+
+min_occurence = 6
+get_ipython().run_line_magic('time', "simple_high_occurence_graph = filter_graph(gx_all, lambda node: node['occurence']>=min_occurence)")
+
+
+# In[172]:
+
+
+get_ipython().run_line_magic('time', "high_occurence_large_sigma_graph = filter_graph(high_occurence_graph1b, lambda node: node['sigma_mask'] >= 4.5)")
+get_ipython().run_line_magic('time', "high_occurence_large_opt_sigma_graph = filter_graph(high_occurence_graph1b, lambda node: node['sigma_opt'] >= 4.5)")
+
+
+# ## Визуализация
+
+# In[173]:
 
 
 def graph_to_paths(g, min_path_length=1):
@@ -1032,9 +1237,8 @@ def graph_to_paths(g, min_path_length=1):
         _acc_segment(root, [], px)
         acc[root] = [s for s in px if len(s) >= min_path_length]
     return acc
-            
-        
-        
+
+
 def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
     #colors = np.random.randint(0,255,size=(len(paths),3))
     stack = np.zeros(shape + (3,), np.uint8)
@@ -1049,19 +1253,109 @@ def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
     return stack
 
 
-# In[153]:
+# In[174]:
 
 
-get_ipython().run_line_magic('time', 'xpaths_all = graph_to_paths(gx_all)')
+# xpaths_high_occ = graph_to_paths(simple_high_occurence_graph)
+# colored_paths_high_occ = paths_to_colored_stack(xpaths_high_occ, 
+#                                                 final_image.shape, 
+#                                                 change_color_at_branchpoints=False)
 
 
-# In[154]:
+# In[175]:
+
+
+xpaths_high_occ1 = graph_to_paths(high_occurence_graph1b)
+colored_paths_high_occ1 = paths_to_colored_stack(xpaths_high_occ1, 
+                                                 final_image.shape, 
+                                                 change_color_at_branchpoints=False)
+
+
+# In[176]:
+
+
+# colored_paths_high_occ2 = paths_to_colored_stack(graph_to_paths(high_occurence_large_sigma_graph,), 
+#                                                  final_image.shape, 
+#                                                  change_color_at_branchpoints=False)
+# colored_paths_high_occ3 = paths_to_colored_stack(graph_to_paths(high_occurence_large_opt_sigma_graph,), 
+#                                                  final_image.shape, 
+#                                                  change_color_at_branchpoints=False)
+
+
+# In[177]:
+
+
+w = napari.view_image(final_image, opacity=0.5, ndisplay=3)
+#w.add_image(colored_paths_high_occ1.sum(axis=-1)>0, name='cp-occ1')
+# w.add_image(colored_paths_high_occ, channel_axis=3, colormap=['red','green','blue'], name='cp-occ-simple')
+w.add_image(colored_paths_high_occ1, channel_axis=3, colormap=['red','green','blue'], name='cp-occ1')
+# w.add_image(colored_paths_high_occ2, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_mask')
+# w.add_image(colored_paths_high_occ3, channel_axis=3, colormap=['red','green','blue'], name='cp-occ+σ_opt')
+
+
+# In[119]:
+
+
+# иногда выполнение ячейки подвисает и запускается только если выполнить следующую
+# это sham-ячейка для этого 
+_=1
+
+
+# # Сохранение
+
+# In[1]:
+
+
+import pickle
+
+
+# In[11]:
+
+
+tup2str = lambda x: ','.join(list(map(str, x)))
+str2tup = lambda x: tuple(map(int, x.split(',')))
+
+
+# In[3]:
+
+
+# with open('graph_3wk-both1-grn-raw.pic.pickle') as fd:
+#     load_graph = pickle.load(fd)
+
+
+# In[12]:
+
+
+# nx.write_gml(simple_high_occurence_graph, 
+#              'gx_all_{}'.format(os.path.basename(filename)), 
+#              stringizer=tup2str)
+
+
+# In[248]:
+
+
+load_graph = nx.read_gml('graph_3wk-both1-grn-raw.pic.gml', destringizer=str2tup)
+
+
+# In[249]:
+
+
+get_ipython().run_line_magic('time', 'xpaths_all = graph_to_paths(load_graph)')
+
+
+# In[250]:
 
 
 get_ipython().run_line_magic('time', 'colored_paths_all = paths_to_colored_stack(xpaths_all, final_image.shape, change_color_at_branchpoints=False)')
 
 
-# In[157]:
+# In[91]:
+
+
+verbose = True
+
+
+# In[251]:
 
 
 if verbose:
