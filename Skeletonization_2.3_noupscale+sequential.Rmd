@@ -74,7 +74,7 @@ import napari
 from tqdm.auto import tqdm
 ```
 
-```{python}
+```{python cell_style="center"}
 import ccdb
 import astromorpho as astro
 ```
@@ -718,10 +718,20 @@ if VERBOSE:
     w.add_image(qnorm, blending='additive', name='qnorm', contrast_limits=(qnorm[qnorm>0].min(), qnorm.max()))
 ```
 
-## Построение графа
+```{python}
+skel_coll = {sigma: astro.morpho.peaks_in_stack(sato_coll[sigma],masks[sigma])>3 for sigma in tqdm(sigmas)}
+```
+
+```{python}
+w = napari.view_image(final_image, opacity=0.5)
+for sigma, skel in skel_coll.items():
+    w.add_image(skel, name='sigma: {:0.2f}'.format(sigma), blending='additive')
+```
+
+# Построение графа
 
 <!-- #region -->
-### Выражение для весов ребер
+## Выражение для весов ребер
 
 В качестве весов мы используем dissimilarities (неcхожести между узлами,  расстояния). 
 
@@ -904,12 +914,6 @@ idx.shape
 ```
 
 ```{python}
-i, j= np.indices(final_image.shape[1:])
-idx2d = np.stack((i,j), axis=2)
-idx2d.shape
-```
-
-```{python}
 crops = prep_crops()
 ```
 
@@ -951,7 +955,7 @@ for crop, acrop in tqdm(crops):
                                                   offset=offset, verbose=False))
 ```
 
-#### No-no for too big sigma_jumps
+### No-no for too big sigma_jumps
 (Could also be a papermill flag)
 
 ```{python}
@@ -960,7 +964,7 @@ for p1, p2, data in tqdm(graph.edges(data=True)):
         graph.add_edge(p1,p2, weight=data['weight']*2)
 ```
 
-### Добавление точек оболочки сомы в граф
+## Добавление точек оболочки сомы в граф
 
 ```{python}
 def get_mask_vals(idxs, mask):
