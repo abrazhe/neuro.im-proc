@@ -16,7 +16,7 @@ class AstroGraph(nx.Graph):
     def batch_compose_all(cls, tip_paths, batch_size=10000, verbose=True):
         graphs = []
         for i, tp in enumerate(tqdm(tip_paths, disable=not verbose)):
-            graphs.append(path_to_graph(tp))
+            graphs.append(AstroGraph.path_to_graph(tp))
             if i % batch_size == 0:
                 gx_all = nx.compose_all(graphs)
                 graphs = [gx_all]
@@ -40,6 +40,16 @@ class AstroGraph(nx.Graph):
                 visited.add(tp)
         return g
 
+    @property
+    def nodes(self, data=False):
+        return self.graph.nodes(data=data)
+
+    # def nodes(self):
+    #     return self.graph.nodes()
+
+    @property
+    def edges(self, data=False):
+        return self.graph.edges(data=data)
 
 
     def get_tips(self):
@@ -57,7 +67,8 @@ class AstroGraph(nx.Graph):
 
 
     def get_branches(self):
-        self.graph
+        # self.graph
+        raise Exception('ERROR')
 
 
     def get_branch_points(self):
@@ -71,6 +82,15 @@ class AstroGraph(nx.Graph):
             func_vect = np.vectorize(func)
             attrs = func_vect(attrs)
         return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
+
+
+    def add_edge(self, start, end, **attr):
+        self.graph.add_edge(start, end, **attr)
+
+
+    def add_node(self, node, **attr):
+        self.graph.add_node(node, **attr)
+
 
 
     def check_for_cycles(self, verbose=False):
@@ -91,7 +111,7 @@ class AstroGraph(nx.Graph):
         #reverse order of points in paths, so that they start at tips
         paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
         paths = list(paths_dict.values())
-        points = self.count_points_paths(paths)
+        points = AstroGraph.count_points_paths(paths)
 
         qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
         for p, val in points.items():
@@ -124,7 +144,7 @@ class AstroGraph(nx.Graph):
         elif kind == 'path':
             viewer.add_shapes(pts, edge_width=0.5, shape_type='path', **kw)
 
-    def view_graph_as_colored_image(self,  shape,
+    def view_graph_as_colored_image(self, shape,
                                     viewer=None, name=None,
                                     root_chooser=lambda r: True,
                                     change_color_at_branchpoints=False):
