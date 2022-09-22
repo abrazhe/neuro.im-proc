@@ -266,7 +266,7 @@ def follow_to_root(g, tip, max_nodes=1000000):
     visited = {tip}
     acc = [tip]
     for i in range(max_nodes):
-        parents = list(g.predecessors(tip))
+        parents = list(g.graph.predecessors(tip))
         parents = [p for p in parents if not p in visited]
         if not len(parents):
             break
@@ -282,11 +282,11 @@ def compose_path_segments(G, stack_shape, seq_paths, ultimate_targets, max_start
     Combine all multi-scale path segments to a graph, then take only paths
     starting a a small enough sigma and reaching for the soma, the ultimate target
     """
-    gx_all = nx.compose_all([seq_paths[sigma] for sigma in sorted(seq_paths)])
+    gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
     gx_all = AG(gx_all)
 
     all_tips = gx_all.get_tips()
-    fine_tips = list({t for t in all_tips if G.nodes[t]['sigma_mask'] <= max_start_sigma})
+    fine_tips = list({t for t in all_tips if G.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
     new_paths = (follow_to_root(gx_all, t) for t in fine_tips)
     # Can leave just min_path_length (?)
     new_paths = (p for p in new_paths
@@ -306,11 +306,11 @@ def compose_path_segments(G, stack_shape, seq_paths, ultimate_targets, max_start
                            gx_all.get_attrs_by_nodes(qstack),
                            'occurence')
     nx.set_node_attributes(gx_all,
-                           gx_all.get_attrs_by_nodes(sigma_mask, lambda x: id2sigma[x]),
+                           gx_all.get_attrs_by_nodes(G.sigma_mask, lambda x: G.id2sigma[x]),
                            'sigma_mask')
 
     nx.set_node_attributes(gx_all,
-                           gx_all.get_attrs_by_nodes(sigma_sato, lambda x: id2sigma[x]),
+                           gx_all.get_attrs_by_nodes(G.sato, lambda x: G.id2sigma[x]),
                            'sigma_opt')
     return gx_all
 
@@ -349,13 +349,13 @@ class AstrObject:
 
 
     def soma_segmentation(self, iterations=10, return_shell=False):
-        print('Smooth Stack')
+        ''' segment soma from image'''
         smooth_stack = ndi.gaussian_filter(self.image, 3)
         tol = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
-        print('Soma Seed')
         soma_seed_mask = flood(smooth_stack, self.center, tolerance=tol)
-        print('Soma Mask')
-        soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        print('Mask Expanding')
+        soma_mask = soma_seed_mask
+        # soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
         print('Soma Shell')
         soma_shell = get_shell_mask(soma_mask, as_points=True)
 
@@ -389,15 +389,15 @@ class AstrObject:
         self.sigmas = clear_sigmas(sigma2del, sigmas, vectors, satos, masks)
 
         self.masks = masks
-        self.id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)}
-        self.sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
+        self.id2sigma = {i+1:sigma for i, sigma in enumerate(self.sigmas)}
+        self.sigma2id = {sigma:i+1 for i, sigma in enumerate(self.sigmas)}
 
 
         ## MERGING
         print('Merging...')
 
         self.sato = merge_sato(self.image, satos, masks, self.sigma2id)
-        self.vectors, masks_exclusive = merge_vectors(vectors, sigmas, masks)
+        self.vectors, masks_exclusive = merge_vectors(vectors, self.sigmas, masks)
 
         sigma_mask = np.zeros(self.image.shape, dtype=int)
         for sigma_id, sigma in self.id2sigma.items():
@@ -462,13 +462,13 @@ class AstrObject:
             if len(non_empty_paths):
                 path_acc[sigma] = AG.batch_compose_all(non_empty_paths, verbose=False)
             else:
-                path_acc[sigma] = nx.DiGraph()
+                path_acc[sigma] = AG(nx.DiGraph())
         return path_acc
 
 
     def astro_graph_plotting(self):
         seq_paths = self.scale_sequential_paths()
-        gx_all = compose_path_segments(self.full_graph, self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_mask))
+        gx_all = compose_path_segments(self, self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_mask))
         gx_all.check_for_cycles(verbose=True)
         occ_acc = {}
         for sigma in self.sigmas:
@@ -478,7 +478,7 @@ class AstrObject:
         gx_all_occ = gx_all
 
         for i in range(10):
-            good_nodes = (node for node in gx_all_occ if filter_fn_(gx_all_occ, node))
-            gx_all_occ = gx_all_occ.subgraph(good_nodes)
+            good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all_occ.graph, node))
+            gx_all_occ = gx_all_occ.graph.subgraph(good_nodes)
 
         self.graph = gx_all_occ

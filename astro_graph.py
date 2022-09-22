@@ -51,6 +51,9 @@ class AstroGraph(nx.Graph):
     def edges(self, data=False):
         return self.graph.edges(data=data)
 
+    @property
+    def predecessors(self, node):
+        return self.graph.predecessors(node)
 
     def get_tips(self):
         return {n for n in self.graph.nodes if len(list(self.graph.successors(n))) == 0}
