@@ -266,7 +266,7 @@ def follow_to_root(g, tip, max_nodes=1000000):
     visited = {tip}
     acc = [tip]
     for i in range(max_nodes):
-        parents = list(g.graph.predecessors(tip))
+        parents = list(g.predecessors(tip))
         parents = [p for p in parents if not p in visited]
         if not len(parents):
             break
@@ -276,43 +276,6 @@ def follow_to_root(g, tip, max_nodes=1000000):
     if i >= max_nodes-1:
         print('limit reached')
     return acc
-
-def compose_path_segments(G, stack_shape, seq_paths, ultimate_targets, max_start_sigma=2, min_path_lenght=25):
-    """
-    Combine all multi-scale path segments to a graph, then take only paths
-    starting a a small enough sigma and reaching for the soma, the ultimate target
-    """
-    gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
-    gx_all = AG(gx_all)
-
-    all_tips = gx_all.get_tips()
-    fine_tips = list({t for t in all_tips if G.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
-    new_paths = (follow_to_root(gx_all, t) for t in fine_tips)
-    # Can leave just min_path_length (?)
-    new_paths = (p for p in new_paths
-                 if p[-1] in ultimate_targets and len(p)>=min_path_lenght)
-    new_paths = sorted(new_paths, key=lambda p: len(p), reverse=True)
-
-    gx_all = AG.batch_compose_all(new_paths)
-
-    counts = AG.count_points_paths(new_paths)
-    qstack = np.zeros(stack_shape)
-    for p,val in counts.items():
-        if val >= 1:
-            qstack[p] = np.log(val)
-
-    # add the useful attributes
-    nx.set_node_attributes(gx_all,
-                           gx_all.get_attrs_by_nodes(qstack),
-                           'occurence')
-    nx.set_node_attributes(gx_all,
-                           gx_all.get_attrs_by_nodes(G.sigma_mask, lambda x: G.id2sigma[x]),
-                           'sigma_mask')
-
-    nx.set_node_attributes(gx_all,
-                           gx_all.get_attrs_by_nodes(G.sato, lambda x: G.id2sigma[x]),
-                           'sigma_opt')
-    return gx_all
 
 
 def filter_fn_(G, n):
@@ -336,9 +299,11 @@ class AstrObject:
         return self._graph
 
     @graph.setter
-    def set_graph(self, graph):
-        if type(graph) is AstroGraph:
+    def graph(self, graph):
+        if type(graph) is AG:
             self._graph = graph
+        else:
+            self._graph = AG(graph)
 
 
     def center_detection(self):
@@ -446,7 +411,7 @@ class AstrObject:
         right place to prevent loops and cycles in the merged graphs.
         Cycles are bad, because they break the coloring/visualization code :)
         """
-        sub_graphs = {sigma:self.full_graph.filter_graph(lambda n: n['sigma_mask']>=sigma) for sigma in self.sigmas}
+        sub_graphs = {sigma: self.full_graph.filter_graph(lambda n: n['sigma_mask']>=sigma) for sigma in self.sigmas}
         targets = set(self.soma_shell_mask)
         visited = set(self.soma_shell_mask)
         path_acc = {}
@@ -466,9 +431,51 @@ class AstrObject:
         return path_acc
 
 
-    def astro_graph_plotting(self):
+    def compose_path_segments(self, stack_shape, seq_paths, ultimate_targets, max_start_sigma=2, min_path_length=25):
+        """
+        Combine all multi-scale path segments to a graph, then take only paths
+        starting a a small enough sigma and reaching for the soma, the ultimate target
+        """
+        gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
+        gx_all = AG(gx_all)
+        all_tips = gx_all.get_tips()
+        fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
+        new_paths = (follow_to_root(gx_all.graph, t) for t in fine_tips)
+        # Can leave just min_path_length (?)
+        new_paths = (p for p in new_paths
+                     if p[-1] in ultimate_targets and len(p)>=min_path_length)
+        new_paths = sorted(new_paths, key=lambda p: len(p), reverse=True)
+        if not len(new_paths):
+            median_length = np.median(np.array([len(p) for p in new_paths
+                     if p[-1] in ultimate_targets]))
+            raise Exception('min_path_length = {} is too huge for this cell. Median length is {}'.format(min_path_length, median_length))
+
+        gx_all = AG.batch_compose_all(new_paths)
+
+        counts = AG.count_points_paths(new_paths)
+        qstack = np.zeros(stack_shape)
+        for p,val in counts.items():
+            if val >= 1:
+                qstack[p] = np.log(val)
+
+        # add the useful attributes
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(qstack),
+                               'occurence')
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sigma_mask, lambda x: self.id2sigma[x]),
+                               'sigma_mask')
+
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sato, lambda x: self.id2sigma[x]),
+                               'sigma_opt')
+        return gx_all
+
+
+    def astro_graph_plotting(self, min_path_length=25, loneliness=10):
         seq_paths = self.scale_sequential_paths()
-        gx_all = compose_path_segments(self, self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_mask))
+        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_mask), min_path_length=min_path_length)
+        print(type(gx_all))
         gx_all.check_for_cycles(verbose=True)
         occ_acc = {}
         for sigma in self.sigmas:
@@ -476,9 +483,8 @@ class AstrObject:
             occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
 
         gx_all_occ = gx_all
-
-        for i in range(10):
-            good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all_occ.graph, node))
-            gx_all_occ = gx_all_occ.graph.subgraph(good_nodes)
+        for i in range(loneliness):
+            good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all.graph, node))
+            gx_all_occ = gx_all_occ.subgraph(good_nodes)
 
         self.graph = gx_all_occ

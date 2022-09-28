@@ -41,6 +41,10 @@ class AstroGraph(nx.Graph):
         return g
 
     @property
+    def type(self):
+        return type(self.graph)
+
+    @property
     def nodes(self, data=False):
         return self.graph.nodes(data=data)
 
@@ -51,20 +55,22 @@ class AstroGraph(nx.Graph):
     def edges(self, data=False):
         return self.graph.edges(data=data)
 
-    @property
     def predecessors(self, node):
         return self.graph.predecessors(node)
 
+    def successors(self, node):
+        return self.graph.successors(node)
+
     def get_tips(self):
-        return {n for n in self.graph.nodes if len(list(self.graph.successors(n))) == 0}
+        return {n for n in self.nodes if len(list(self.successors(n))) == 0}
 
 
     def get_roots(self):
-        return {n for n in self.graph.nodes if len(list(self.graph.predecessors(n))) < 1}
+        return {n for n in self.nodes if len(list(self.predecessors(n))) < 1}
 
 
     def get_sorted_roots(self):
-        return sorted(get_roots(self.graph),
+        return sorted(self.get_roots(),
                   key=lambda r: len(self.filter_graph(lambda n: n['root']==r)),
                   reverse=True,)
 
@@ -75,16 +81,20 @@ class AstroGraph(nx.Graph):
 
 
     def get_branch_points(self):
-        return {n for n in self.graph.nodes if len(list(self.graph.successors(n))) > 1}
+        return {n for n in self.nodes if len(list(self.successors(n))) > 1}
 
 
     def get_attrs_by_nodes(self, arr, func=None):
-        nodesG = np.array(self.graph.nodes())
+        nodesG = np.array(self.nodes())
         attrs = arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
         if func is not None:
             func_vect = np.vectorize(func)
             attrs = func_vect(attrs)
         return {tuple(node): attr for node, attr in zip(nodesG, attrs)}
+
+
+    def subgraph(self, nodes):
+        return self.graph.subgraph(nodes)
 
 
     def add_edge(self, start, end, **attr):
@@ -125,8 +135,8 @@ class AstroGraph(nx.Graph):
 
     def filter_graph(self, func = lambda node: True):
         "returns a view on graph for the nodes satisfying the condition defined by func(node)"
-        good_nodes = (node for node in self.graph if func(self.graph.nodes[node]))
-        return self.graph.subgraph(good_nodes)
+        good_nodes = (node for node in self.graph if func(self.nodes[node]))
+        return self.subgraph(good_nodes)
 
 
     #### VIZUALIZATIONS
@@ -138,7 +148,7 @@ class AstroGraph(nx.Graph):
         """
         if color is None:
             color = np.random.rand(3)
-        pts = np.array(self.graph.nodes)
+        pts = np.array(self.nodes)
 
         kw = dict(face_color=color, edge_color=color, blending='translucent_no_depth', name=name)
         #kw = dict(face_color=color, edge_color=color,  name=name)
@@ -176,7 +186,7 @@ class AstroGraph(nx.Graph):
                 segm = []
             if accx is None:
                 accx = []
-            children = list(self.graph.successors(root))
+            children = list(self.successors(root))
 
             if len(children) < 1:
                 accx.append(segm)
