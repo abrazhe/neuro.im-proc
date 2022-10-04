@@ -31,7 +31,7 @@ def find_kink(v,pre_smooth=1.5):
 
 
 def make_sato_mask(stack, sigmas=np.logspace(2,3,5,base=2), plow=99, phigh=99.9, **kwargs):
-    out_sato = np.max([astro.morpho.sato3d(stack,s,**kwargs)*s**2 for s in tqdm(sigmas)],0).astype(float64)
+    out_sato = np.max([astro.morpho.sato3d(stack,s,**kwargs)*s**2 for s in tqdm(sigmas)],0).astype(np.float64)
     th_low_s, th_high_s = np.percentile(out_sato[out_sato>0], (plow, phigh))
     print('thresholds', th_low_s, th_high_s/2, th_high_s)
     sato_mask = umasks.largest_region(skfilt.apply_hysteresis_threshold(out_sato, th_high_s/2, th_high_s))

@@ -14,6 +14,8 @@ import networkx as nx
 import astromorpho as astro
 from astro_graph import AstroGraph as AG
 
+from tqdm.auto import tqdm
+
 ## CENTER DETECTION
 def percentile_rescale(arr, plow=1, phigh=99.5):
     low, high = np.percentile(arr, (plow, phigh))
@@ -339,12 +341,13 @@ class AstrObject:
         masks=[]
         vectors={}
         satos={}
-        for sigma in sigmas:
+        for sigma in tqdm(sigmas, desc='Calculating'):
             vectors[sigma], satos[sigma] = calc_vectors(self.image, sigma, scale)
             masks.append(calc_sato_mask(satos[sigma], sigma))
 
         masks = {sigma: mask for sigma, mask in zip([*sigmas, 0], masks_overlapping(*masks, self.soma_mask, reverse=True))}
 
+        print('Sigmas cleaning...')
         sigma2del = {}
         for sigma, mask in masks.items():
             masks[sigma] = mask_thresholding(self.image, mask)
