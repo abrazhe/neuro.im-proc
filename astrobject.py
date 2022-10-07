@@ -6,7 +6,7 @@ from scipy import ndimage as ndi
 
 from skimage import segmentation
 from skimage import feature as skf
-from skimage.morphology import flood, remove_small_objects
+from skimage.morphology import flood, remove_small_objects, flood_fill
 from skimage.filters import threshold_li
 
 import networkx as nx
@@ -87,9 +87,8 @@ def mask_thresholding(image, mask, threshold_method=threshold_li):
     return pre_mask
 
 
-def clear_sigmas(sigma2del, sigmas, vectors, sato, masks):
+def clear_sigmas(sigma2del, sigmas, vectors, sato):
     for sigma in sigma2del.values():
-        del masks[sigma]
         del sato[sigma]
         del vectors[sigma]
 
@@ -228,26 +227,26 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001, offset=1,
     return zip(idx1, idx2,  Wflat[Wgood])
 
 
-def get_mask_vals(idxs, mask):
-    idx_mask = mask[idxs[:,0], idxs[:,1], idxs[:,2]]
-    return idxs[idx_mask]
-
-
-def get_edges(mask, index1, index2, weight):
-    idx1 = [tuple(i) for i in get_mask_vals(index1.reshape((-1, index1.shape[-1])), mask)]
-    idx2 = [tuple(i) for i in get_mask_vals(index2.reshape((-1, index2.shape[-1])), mask)]
+def get_edges(index1, index2, weight):
+    idx1 = [tuple(i) for i in index1.reshape((-1, index1.shape[-1]))]
+    idx2 = [tuple(i) for i in index2.reshape((-1, index2.shape[-1]))]
     return zip(idx1, idx2, np.full(len(idx1), weight))
 
 
 def add_soma_points(graph, soma_mask, idx, crops):
     Gsoma = nx.Graph()
-    soma_shell_mask = get_shell_mask(soma_mask)
+    soma_shell_points = get_shell_mask(soma_mask, as_points=True)
     for crop, acrop in crops:
-        Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
+        edges = get_edges(idx[crop], idx[acrop], 0.7)
+        Gsoma.add_weighted_edges_from(edges)
 
+    Gsoma = Gsoma.subgraph(soma_shell_points)
     for p1, p2, weight in Gsoma.edges(data=True):
+        # length = np.linalg.norm(np.array(p1)-np.array(p2))
+        # if length > 2:
+        #     print(p1, p2)
         try:
-            old_weight = graph.get_edge_data(p1, p2)['weight']
+            old_weight = graph.graph.get_edge_data(p1, p2)['weight']
         except Exception as exc:
             old_weight = 1
         graph.graph.add_edge(p1, p2, weight=min(weight['weight'], old_weight))
@@ -289,10 +288,10 @@ def filter_fn_(G, n):
 
 
 class AstrObject:
-    def __init__(self, image, soma_mask=None, soma_shell_mask=None):
+    def __init__(self, image, soma_mask=None, soma_shell_points=None):
         self.image = image
         self.soma_mask = soma_mask
-        self.soma_shell_mask = soma_shell_mask
+        self.soma_shell_points = soma_shell_points
         self._graph = None
 
 
@@ -321,22 +320,28 @@ class AstrObject:
         tol = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
         soma_seed_mask = flood(smooth_stack, self.center, tolerance=tol)
         print('Mask Expanding')
-        soma_mask = soma_seed_mask
-        # soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+
+        # Filling holes if exist
+        arr = flood_fill(soma_mask, (0,0,0), True)
+        soma_mask += ~arr
+
         print('Soma Shell')
         soma_shell = get_shell_mask(soma_mask, as_points=True)
+        soma_shell_mask = get_shell_mask(soma_mask)
 
         self.soma_mask=soma_mask
-        self.soma_shell_mask=soma_shell
+        self.soma_shell_points=soma_shell
+        self.soma_shell_mask = soma_shell_mask
 
 
-    def branch_segmentation(self, scale, sigma_start=0, sigma_end=3, sigma_step=0.5, sigmas=None):
+    def branch_segmentation(self, scale, sigma_start=0, sigma_end=5, sigma_step=0.5, sigmas=None):
 
         if sigmas is None:
             sigmas = 2**np.arange(sigma_start, sigma_end, sigma_step)
 
         ## VECTORS AND MASKS
-        print('Vectors and Masks...')
+        print('Vectors...')
 
         masks=[]
         vectors={}
@@ -345,18 +350,24 @@ class AstrObject:
             vectors[sigma], satos[sigma] = calc_vectors(self.image, sigma, scale)
             masks.append(calc_sato_mask(satos[sigma], sigma))
 
-        masks = {sigma: mask for sigma, mask in zip([*sigmas, 0], masks_overlapping(*masks, self.soma_mask, reverse=True))}
-
-        print('Sigmas cleaning...')
+        print('Masks and sigmas cleaning...')
         sigma2del = {}
-        for sigma, mask in masks.items():
-            masks[sigma] = mask_thresholding(self.image, mask)
-            if np.sum(masks[sigma]) == 0:
+        for i, sigma in enumerate(sigmas):
+            if np.sum(masks[i]) == 0:
                 sigma2del[i] = sigma
+                masks[i] = None
 
-        self.sigmas = clear_sigmas(sigma2del, sigmas, vectors, satos, masks)
+        self.sigmas = clear_sigmas(sigma2del, sigmas, vectors, satos)
+        masks = [mask for mask in masks if mask is not None]
+
+        masks = {sigma: mask for sigma, mask in zip([*sigmas, 0], masks_overlapping(*masks, self.soma_mask, reverse=False))}
+
+        for sigma in sigmas:
+            if sigma > 3:
+                masks[sigma] = mask_thresholding(self.image, masks[sigma])
 
         self.masks = masks
+
         self.id2sigma = {i+1:sigma for i, sigma in enumerate(self.sigmas)}
         self.sigma2id = {sigma:i+1 for i, sigma in enumerate(self.sigmas)}
 
@@ -376,27 +387,33 @@ class AstrObject:
     def full_graph_plotting(self, alpha, beta, offset=1):
         i, j, k = np.indices(self.image.shape)
         idx = np.stack((i,j,k), axis=3)
-
         crops = prep_crops()
+
         graph = AG(nx.Graph())
-
         vectors = self.vectors
-
-        for crop, acrop in crops:
-            graph.graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop],
+        for crop, acrop in tqdm(crops, desc='Edge calculation'):
+            edges = calc_edges(vectors[crop], vectors[acrop],
                                                      idx[crop], idx[acrop],
                                                      alpha=alpha, beta=beta,
-                                                     verbose=False))
+                                                     verbose=False)
+            graph.graph.add_weighted_edges_from(edges)
 
         # no-no for too big sigma jumps
-        for p1, p2, data in graph.edges(data=True):
+        for p1, p2, data in tqdm(graph.edges(data=True), desc='Preventing "jumps"'):
             if np.abs(self.sigma_mask[p1]-self.sigma_mask[p2]) > 1:
                 graph.graph.add_edge(p1,p2, weight=data['weight']*2)
 
         # Add soma points
-        add_soma_points(graph, self.soma_mask, idx, crops)
+        idmin, idmax = idx[self.soma_shell_mask].min(axis=0), idx[self.soma_shell_mask].max(axis=0)+1
+        soma_idx = idx[idmin[0]:idmax[0], idmin[1]:idmax[1], idmin[2]:idmax[2]]
+        add_soma_points(graph, self.soma_mask, soma_idx, crops)
+        # for p1, p2 in tqdm(graph.edges, desc='check_after soma'):
+        #     length = np.linalg.norm(np.array(p1)-np.array(p2))
+        #     if length > 2:
+        #         print(p1, p2)
+
         self.sigma_mask[self.soma_mask] = self.sigma2id[self.sigmas[-1]] # Soma is also the largest scale
-        ssm = np.array(self.soma_shell_mask)
+        ssm = np.array(self.soma_shell_points)
         self.sigma_mask[ssm[:,0], ssm[:,1], ssm[:,2]] = self.sigma2id[self.sigmas[-1]] # Soma is also the largest scale
 
         self.id2sigma[0] = 0
@@ -415,10 +432,10 @@ class AstrObject:
         Cycles are bad, because they break the coloring/visualization code :)
         """
         sub_graphs = {sigma: self.full_graph.filter_graph(lambda n: n['sigma_mask']>=sigma) for sigma in self.sigmas}
-        targets = set(self.soma_shell_mask)
-        visited = set(self.soma_shell_mask)
+        targets = set(self.soma_shell_points)
+        visited = set(self.soma_shell_points)
         path_acc = {}
-        for sigma in sorted(self.sigmas, reverse=True):
+        for sigma in tqdm(sorted(self.sigmas, reverse=True)):
             _, paths = AG.find_paths(sub_graphs[sigma], targets, self.image.shape)
             targets = targets.union(set(paths.keys()))
             if sigma < np.max(self.sigmas):
@@ -427,6 +444,7 @@ class AstrObject:
                          if self.full_graph.nodes[loc]['sigma_mask'] == sigma}
             visited = visited.union(reduce(set.union, paths.values(), set()))
             non_empty_paths = [p for p in paths.values() if p]
+
             if len(non_empty_paths):
                 path_acc[sigma] = AG.batch_compose_all(non_empty_paths, verbose=False)
             else:
@@ -476,18 +494,21 @@ class AstrObject:
 
 
     def astro_graph_plotting(self, min_path_length=25, loneliness=10):
+        print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
-        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_mask), min_path_length=min_path_length)
-        print(type(gx_all))
+        # for k, v in seq_paths.items():
+        #     print(len(v.nodes))
+        print('compose path segments...')
+        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length)
         gx_all.check_for_cycles(verbose=True)
-        occ_acc = {}
-        for sigma in self.sigmas:
-            sub = gx_all.filter_graph(lambda node: node['sigma_mask']==sigma)
-            occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
+        print('gx_all', len(gx_all.nodes))
 
         gx_all_occ = gx_all
+        print(type(gx_all_occ))
         for i in range(loneliness):
-            good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all.graph, node))
-            gx_all_occ = gx_all_occ.subgraph(good_nodes)
+            good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all_occ.graph, node))
+
+            gx_all_occ = AG(gx_all_occ.subgraph(good_nodes))
+            print(len(gx_all_occ.nodes), type(gx_all_occ))
 
         self.graph = gx_all_occ
