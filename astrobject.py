@@ -7,7 +7,7 @@ from scipy import ndimage as ndi
 from skimage import segmentation
 from skimage import feature as skf
 from skimage.morphology import flood, remove_small_objects, flood_fill
-from skimage.filters import threshold_li
+from skimage.filters import threshold_li, threshold_triangle
 
 import networkx as nx
 
@@ -62,7 +62,7 @@ def calc_vectors(image, sigma, scale):
 
 
 def calc_sato_mask(sato, sigma):
-    threshold = threshold_li(sato[sato>0])*sigma**0.5
+    threshold = threshold_triangle(sato[sato>0])*sigma**0.5
     mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
     return mask
 
