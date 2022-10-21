@@ -62,8 +62,8 @@ def calc_vectors(image, sigma, scale):
 
 
 def calc_sato_mask(sato, sigma):
-    threshold = threshold_triangle(sato[sato>0])*sigma**0.5
-    mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
+    threshold = threshold_triangle(sato[sato>0])*sigma**0.5 # parameter try to change
+    mask = remove_small_objects(sato > threshold, min_size=int(sigma*64)) # parameter try to change
     return mask
 
 
@@ -376,15 +376,15 @@ class AstrObject:
         print('Merging...')
 
         self.sato = merge_sato(self.image, satos, masks, self.sigma2id)
-        self.vectors, masks_exclusive = merge_vectors(vectors, self.sigmas, masks)
+        self.vectors, self.masks_exclusive = merge_vectors(vectors, self.sigmas, masks)
 
         sigma_mask = np.zeros(self.image.shape, dtype=int)
         for sigma_id, sigma in self.id2sigma.items():
-            sigma_mask[masks_exclusive[sigma]] = sigma_id
+            sigma_mask[self.masks_exclusive[sigma]] = sigma_id
         self.sigma_mask = sigma_mask
 
 
-    def full_graph_plotting(self, alpha, beta, offset=1):
+    def full_graph_construction(self, alpha, beta, offset=1):
         i, j, k = np.indices(self.image.shape)
         idx = np.stack((i,j,k), axis=3)
         crops = prep_crops()
@@ -436,6 +436,7 @@ class AstrObject:
         visited = set(self.soma_shell_points)
         path_acc = {}
         for sigma in tqdm(sorted(self.sigmas, reverse=True)):
+            print(sigma)
             _, paths = AG.find_paths(sub_graphs[sigma], targets, self.image.shape)
             targets = targets.union(set(paths.keys()))
             if sigma < np.max(self.sigmas):
@@ -452,15 +453,20 @@ class AstrObject:
         return path_acc
 
 
-    def compose_path_segments(self, stack_shape, seq_paths, ultimate_targets, max_start_sigma=2, min_path_length=25):
+    def compose_path_segments(self, stack_shape, seq_paths, ultimate_targets, tips=None, max_start_sigma=2, min_path_length=25):
         """
         Combine all multi-scale path segments to a graph, then take only paths
         starting a a small enough sigma and reaching for the soma, the ultimate target
         """
         gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
         gx_all = AG(gx_all)
-        all_tips = gx_all.get_tips()
-        fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
+
+        if tips is None:
+            all_tips = gx_all.get_tips()
+            fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
+        else:
+            fine_tips = tips
+
         new_paths = (follow_to_root(gx_all.graph, t) for t in fine_tips)
         # Can leave just min_path_length (?)
         new_paths = (p for p in new_paths
@@ -493,22 +499,19 @@ class AstrObject:
         return gx_all
 
 
-    def astro_graph_plotting(self, min_path_length=25, loneliness=10):
+    def astro_graph_creation(self, min_path_length=25, loneliness=10, tips=None):
         print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
         # for k, v in seq_paths.items():
         #     print(len(v.nodes))
         print('compose path segments...')
-        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length)
+        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length, tips=tips)
         gx_all.check_for_cycles(verbose=True)
-        print('gx_all', len(gx_all.nodes))
 
         gx_all_occ = gx_all
-        print(type(gx_all_occ))
         for i in range(loneliness):
             good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all_occ.graph, node))
 
-            gx_all_occ = AG(gx_all_occ.subgraph(good_nodes))
-            print(len(gx_all_occ.nodes), type(gx_all_occ))
+            gx_all_occ = AG(nx.DiGraph(gx_all_occ.subgraph(good_nodes)))
 
         self.graph = gx_all_occ

@@ -105,7 +105,6 @@ class AstroGraph(nx.Graph):
         self.graph.add_node(node, **attr)
 
 
-
     def check_for_cycles(self, verbose=False):
         try:
             cycle = nx.find_cycle(self.graph)
@@ -117,26 +116,53 @@ class AstroGraph(nx.Graph):
                 print('No cycles!')
             return None
 
-    @staticmethod
-    def find_paths(graph, targets, stack_shape, min_count=1, min_path_length=10):
-        paths_dict = nx.multi_source_dijkstra_path(graph, targets, )
-
-        #reverse order of points in paths, so that they start at tips
-        paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
-        paths = list(paths_dict.values())
-        points = AstroGraph.count_points_paths(paths)
-
-        qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
-        for p, val in points.items():
-            if val >= min_count:
-                qstack[p] = np.log(val)
-        return qstack, paths_dict
-
 
     def filter_graph(self, func = lambda node: True):
         "returns a view on graph for the nodes satisfying the condition defined by func(node)"
         good_nodes = (node for node in self.graph if func(self.nodes[node]))
         return self.subgraph(good_nodes)
+
+
+    def get_bunches(self, min_dist=4):
+        bunches = []
+        roots = self.get_roots()
+        roots_arr = np.array(list(roots))
+
+        for root in roots:
+            roots_dists = np.linalg.norm(root - roots_arr, axis=-1)
+        #     for r, d in zip(roots_arr[roots_dists < min_dist], roots_dists[roots_dists < min_dist]):
+        #         print(root , r, d)
+            neighbours = [tuple(r) for r in roots_arr[roots_dists < min_dist]]
+            STOP=False
+            for bunch in bunches:
+                for n in neighbours:
+                    if n in bunch:
+                        bunch.update(neighbours)
+                        STOP = True
+                        continue
+
+                if STOP:
+                    break
+            if not STOP:
+                bunches.append(set(neighbours))
+
+        set2del = []
+
+        for i, cur_bunch in enumerate(bunches[:-1]):
+            FOUND = False
+            for node in cur_bunch:
+                for bunch in bunches[i+1:]:
+                    if node in bunch:
+                        bunch.update(cur_bunch)
+                        set2del.append(i)
+                        FOUND = True
+                        break
+                if FOUND:
+                    break
+
+        bunches.pop(*set2del)
+
+        return bunches
 
 
     #### VIZUALIZATIONS
@@ -241,3 +267,19 @@ class AstroGraph(nx.Graph):
                     #print(k, p)
                     stack[tuple(p)] = color
         return stack
+
+
+    @staticmethod
+    def find_paths(graph, targets, stack_shape, min_count=1, min_path_length=10):
+        paths_dict = nx.multi_source_dijkstra_path(graph, targets, )
+
+        #reverse order of points in paths, so that they start at tips
+        paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
+        paths = list(paths_dict.values())
+        points = AstroGraph.count_points_paths(paths)
+
+        qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
+        for p, val in points.items():
+            if val >= min_count:
+                qstack[p] = np.log(val)
+        return qstack, paths_dict
