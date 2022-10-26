@@ -270,8 +270,8 @@ class AstroGraph(nx.Graph):
 
 
     @staticmethod
-    def find_paths(graph, targets, stack_shape, min_count=1, min_path_length=10):
-        paths_dict = nx.multi_source_dijkstra_path(graph, targets, )
+    def find_paths(graph, stack_shape, targets, sources=None, min_count=1, min_path_length=10):
+        length_dict, paths_dict = nx.multi_source_dijkstra(graph, targets, sources)
 
         #reverse order of points in paths, so that they start at tips
         paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
