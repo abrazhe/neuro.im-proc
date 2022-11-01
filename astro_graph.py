@@ -270,16 +270,28 @@ class AstroGraph(nx.Graph):
 
 
     @staticmethod
-    def find_paths(graph, targets, stack_shape, min_count=1, min_path_length=10):
-        paths_dict = nx.multi_source_dijkstra_path(graph, targets, )
+    def find_paths(graph, stack_shape, targets, sources=None, min_count=1, min_path_length=10):
+        length_dict, paths_dict = nx.multi_source_dijkstra(graph, targets, sources)
 
         #reverse order of points in paths, so that they start at tips
-        paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
-        paths = list(paths_dict.values())
-        points = AstroGraph.count_points_paths(paths)
+        if type(paths_dict) == list:
+            if len(paths_dict) >= min_path_length:
+                paths_dict = {paths_dict[-1]:paths_dict[::-1]}
+            else:
+                paths_dict = {}
 
-        qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
-        for p, val in points.items():
-            if val >= min_count:
-                qstack[p] = np.log(val)
-        return qstack, paths_dict
+            qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
+            for p in list(paths_dict.values())[0]:
+                qstack[p] = 1
+            return qstack, paths_dict
+        else:
+            paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
+            paths = list(paths_dict.values())
+
+            points = AstroGraph.count_points_paths(paths)
+
+            qstack = np.zeros(stack_shape)  #Это встречаемость точек в путях
+            for p, val in points.items():
+                if val >= min_count:
+                    qstack[p] = np.log(val)
+            return qstack, paths_dict

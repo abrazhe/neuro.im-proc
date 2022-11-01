@@ -87,15 +87,6 @@ def mask_thresholding(image, mask, threshold_method=threshold_li):
     return pre_mask
 
 
-def clear_sigmas(sigma2del, sigmas, vectors, sato):
-    for sigma in sigma2del.values():
-        del sato[sigma]
-        del vectors[sigma]
-
-    sigmas = np.delete(sigmas, list(sigma2del.keys()))
-    return sigmas
-
-
 def merge_sato(image, satos, masks, sigma2id):
     sato_best = np.zeros(image.shape, dtype=int)
     hout = np.zeros(image.shape, bool)
@@ -314,13 +305,18 @@ class AstrObject:
         self.center = center
 
 
-    def soma_segmentation(self, iterations=10, return_shell=False):
+    def soma_segmentation(self, tolerance=None, iterations=10, return_shell=False, expanding=True):
         ''' segment soma from image'''
         smooth_stack = ndi.gaussian_filter(self.image, 3)
-        tol = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
-        soma_seed_mask = flood(smooth_stack, self.center, tolerance=tol)
-        print('Mask Expanding')
-        soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        if tolerance is None:
+            tolerance = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
+        soma_seed_mask = flood(smooth_stack, self.center, tolerance=tolerance)
+
+        if expanding:
+            print('Mask Expanding')
+            soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        else:
+            soma_mask = soma_seed_mask
 
         # Filling holes if exist
         arr = flood_fill(soma_mask, (0,0,0), True)
@@ -351,13 +347,15 @@ class AstrObject:
             masks.append(calc_sato_mask(satos[sigma], sigma))
 
         print('Masks and sigmas cleaning...')
-        sigma2del = {}
-        for i, sigma in enumerate(sigmas):
+        # sigma2del = {}
+        for i, sigma in enumerate(sigmas.copy()):
             if np.sum(masks[i]) == 0:
-                sigma2del[i] = sigma
+                del satos[sigma]
+                del vectors[sigma]
+                sigmas = sigmas[sigmas!=sigma]
                 masks[i] = None
+        self.sigmas = sigmas
 
-        self.sigmas = clear_sigmas(sigma2del, sigmas, vectors, satos)
         masks = [mask for mask in masks if mask is not None]
 
         masks = {sigma: mask for sigma, mask in zip([*sigmas, 0], masks_overlapping(*masks, self.soma_mask, reverse=False))}
@@ -384,7 +382,7 @@ class AstrObject:
         self.sigma_mask = sigma_mask
 
 
-    def full_graph_construction(self, alpha, beta, offset=1):
+    def full_graph_construction(self, alpha, beta, offset=1, preventing_jumps=True):
         i, j, k = np.indices(self.image.shape)
         idx = np.stack((i,j,k), axis=3)
         crops = prep_crops()
@@ -398,10 +396,11 @@ class AstrObject:
                                                      verbose=False)
             graph.graph.add_weighted_edges_from(edges)
 
-        # no-no for too big sigma jumps
-        for p1, p2, data in tqdm(graph.edges(data=True), desc='Preventing "jumps"'):
-            if np.abs(self.sigma_mask[p1]-self.sigma_mask[p2]) > 1:
-                graph.graph.add_edge(p1,p2, weight=data['weight']*2)
+        if preventing_jumps:
+            # no-no for too big sigma jumps
+            for p1, p2, data in tqdm(graph.edges(data=True), desc='Preventing "jumps"'):
+                if np.abs(self.sigma_mask[p1]-self.sigma_mask[p2]) > 1:
+                    graph.graph.add_edge(p1,p2, weight=data['weight']*2)
 
         # Add soma points
         idmin, idmax = idx[self.soma_shell_mask].min(axis=0), idx[self.soma_shell_mask].max(axis=0)+1
@@ -437,7 +436,7 @@ class AstrObject:
         path_acc = {}
         for sigma in tqdm(sorted(self.sigmas, reverse=True)):
             print(sigma)
-            _, paths = AG.find_paths(sub_graphs[sigma], targets, self.image.shape)
+            _, paths = AG.find_paths(sub_graphs[sigma], self.image.shape, targets)
             targets = targets.union(set(paths.keys()))
             if sigma < np.max(self.sigmas):
                 paths = {loc:trim_path(self.full_graph, path, sigma, visited)
@@ -453,7 +452,7 @@ class AstrObject:
         return path_acc
 
 
-    def compose_path_segments(self, stack_shape, seq_paths, ultimate_targets, tips=None, max_start_sigma=2, min_path_length=25):
+    def compose_path_segments(self, stack_shape, seq_paths, ultimate_targets, max_start_sigma=2, min_path_length=25):
         """
         Combine all multi-scale path segments to a graph, then take only paths
         starting a a small enough sigma and reaching for the soma, the ultimate target
@@ -461,11 +460,8 @@ class AstrObject:
         gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
         gx_all = AG(gx_all)
 
-        if tips is None:
-            all_tips = gx_all.get_tips()
-            fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
-        else:
-            fine_tips = tips
+        all_tips = gx_all.get_tips()
+        fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
 
         new_paths = (follow_to_root(gx_all.graph, t) for t in fine_tips)
         # Can leave just min_path_length (?)
@@ -499,13 +495,13 @@ class AstrObject:
         return gx_all
 
 
-    def astro_graph_creation(self, min_path_length=25, loneliness=10, tips=None):
+    def astro_graph_creation(self, min_path_length=25, loneliness=10):
         print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
         # for k, v in seq_paths.items():
         #     print(len(v.nodes))
         print('compose path segments...')
-        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length, tips=tips)
+        gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length)
         gx_all.check_for_cycles(verbose=True)
 
         gx_all_occ = gx_all
@@ -515,3 +511,40 @@ class AstrObject:
             gx_all_occ = AG(nx.DiGraph(gx_all_occ.subgraph(good_nodes)))
 
         self.graph = gx_all_occ
+
+    def tips_graph_creation(self, tips, sources=None, min_path_length=1, proximity=3):
+        if type(tips) is tuple:
+            tips = [tips]
+
+        soma_shell = set(self.soma_shell_points)
+        if sources is None:
+            sources = soma_shell
+        else:
+            for i, source in enumerate(sources):
+                if source not in soma_shell:
+                    _, path2soma = AG.find_paths(self.full_graph.graph, self.image.shape, soma_shell, source, min_path_length=1)
+                    sources[i] = path2soma[source][-1]
+
+        paths = {}
+        for tip in tqdm(tips, desc='Pathing'):
+            if tip in self.full_graph.nodes:
+                _, path = AG.find_paths(self.full_graph.graph, self.image.shape, sources, tip, min_path_length=min_path_length)
+                paths.update(path)
+
+        print('Composing...')
+        non_empty_paths = [p for p in paths.values() if p]
+        if len(non_empty_paths):
+            gx_all = AG.batch_compose_all(non_empty_paths, verbose=False)
+        else:
+            raise Exception('ERROR!! Nothing to compose. Please choose another points and try again')
+
+        print('Setting attributes...')
+        # add the useful attributes
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sigma_mask, lambda x: self.id2sigma[x]),
+                               'sigma_mask')
+
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sato, lambda x: self.id2sigma[x]),
+                               'sigma_opt')
+        self.graph = gx_all
