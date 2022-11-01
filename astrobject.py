@@ -512,16 +512,23 @@ class AstrObject:
 
         self.graph = gx_all_occ
 
-    def tips_graph_creation(self, tips, min_path_length=1, proximity=3):
+    def tips_graph_creation(self, tips, sources=None, min_path_length=1, proximity=3):
         if type(tips) is tuple:
             tips = [tips]
 
-        print('Pathing...')
-        paths = {}
         soma_shell = set(self.soma_shell_points)
-        for tip in tqdm(tips):
+        if sources is None:
+            sources = soma_shell
+        else:
+            for i, source in enumerate(sources):
+                if source not in soma_shell:
+                    _, path2soma = AG.find_paths(self.full_graph.graph, self.image.shape, soma_shell, source, min_path_length=1)
+                    sources[i] = path2soma[source][-1]
+
+        paths = {}
+        for tip in tqdm(tips, desc='Pathing'):
             if tip in self.full_graph.nodes:
-                _, path = find_paths(self.full_graph.graph, self.image.shape, soma_shell, tip, min_path_length=min_path_length)
+                _, path = AG.find_paths(self.full_graph.graph, self.image.shape, sources, tip, min_path_length=min_path_length)
                 paths.update(path)
 
         print('Composing...')
