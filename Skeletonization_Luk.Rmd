@@ -6,7 +6,7 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.7
+      jupytext_version: 1.14.1
   kernelspec:
     display_name: venv
     language: python
@@ -34,56 +34,41 @@ Also, frustrated by "branch jumping", I decided to take another go at iterative 
 ```{python}
 import os
 import sys
-```
+import itertools as itt
 
-```{python}
-# %matplotlib inline
-```
+# File reading
+from pathlib import Path
+import tifffile as tiff
 
-```{python}
-import matplotlib.pyplot as plt
-```
-
-```{python}
+# Image preprocessing
 import cv2
-```
+from skimage.filters import threshold_li, threshold_minimum, threshold_triangle
+from skimage.morphology import remove_small_objects
 
-```{python}
-from functools import reduce
-import operator as op
-```
 
-```{python}
-from importlib import reload
-```
-
-```{python}
-import scipy
+# Calculations
 from scipy import ndimage as ndi
 import numpy as np
-import networkx as nx
 
-from pathlib import Path
-```
-
-```{python}
-import napari
-```
-
-```{python}
-from tqdm.auto import tqdm
-```
-
-```{python cell_style="center"}
+# Analysis
+import astrobject as ao
 import ccdb
 import astromorpho as astro
-```
-```{python}
+import networkx as nx
+
+# Viewing
+import napari
+import matplotlib.pyplot as plt
+# %matplotlib inline
 from networx2napari import draw_edges, draw_nodes
-```
-```{python}
-import graph_utils as gu  
-import visualization as vis
+
+# Beauty
+from tqdm.auto import tqdm
+
+# Utils
+from functools import reduce
+import operator as op
+from importlib import reload
 ```
 
 ```{python}
@@ -104,11 +89,6 @@ def get_shell_mask(mask, do_skeletonize=False, as_points=False):
     if as_points:
         out = astro.morpho.mask2points(out)
     return out 
-```
-
-```{python}
-from skimage.filters import threshold_li, threshold_minimum, threshold_triangle
-from skimage.morphology import remove_small_objects
 ```
 
 ```{python}
@@ -143,21 +123,23 @@ plt.rc('figure', dpi=150)
 # Параметры для запуска
 
 ```{python tags=c("parameters")}
-if os.path.exists('/home/brazhe/yadisk/'):
-    data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
-
-elif os.path.exists('/home/levtg/astro-morpho'):
-    data_dir = '/home/levtg/astro-morpho/data/stacks'
+if os.path.exists('/home/incredible/astro-morpho'):
+    data_dir = '/home/incredible/astro-morpho/data/atlas/'
 else:
     print("Dont know where to look for the data")
 
 output_dir = './output/'
 
-# filename = '3wk-both1-grn-raw.pic' # Test cell AKA "Good fella"
-filename = '4wk-ly9-raw.pic' # Octopus
-# filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
-# filename = '3wk-ly1-raw.pic' # Cell-killer
-# filename = '4wk-both8-grn-raw.pic'
+# filename = '28 Alzheimer Lynx1'
+# filename = '11 Alzheimer'
+file_dir = 'a22 tgL x20_2'
+filename = 'a22 tgL x20_2/a22 tgL x20_2_z04.tif'
+# filename = 'test_astro.tiff'
+
+
+filetype = 'TIFF' # Can be 'TIFF'
+
+imagetype = 'CROP' # Can be 'STACK' or 'CROP'
 
 use_clahe = True
 sigmas = 2**np.arange(0, 3, 0.5)
@@ -179,27 +161,169 @@ OUT = False
 ```{python}
 if HANDY:
     VERBOSE = False
-#     filename = '3wk-ly19-raw.pic'
 ```
 
 ```{python}
-filepath = Path(data_dir).joinpath(filename)
-filepath
+datapath = Path(data_dir).joinpath(file_dir)
+# datapath = Path(data_dir).joinpath(filename)
+datapath
 ```
 
 ```{python}
-stack, meta = ccdb.read_pic(filepath)
-dims = ccdb.get_axes(meta)
-dims
+# x1, x2, y1, y2 = 1004, 1622, 2266, 2780 # 11 Alzheimer
+# x1, x2, y1, y2 = 822, 1306, 2641, 3082 # 28 Alzheimer Lynx1
+x1, x2, y1, y2 = 1231, 1634, 2138, 2486 # test_astrocyte
 ```
 
 ```{python}
-if len(dims):
-    zoom = (dims[-1][0]/dims[0][0])
-else:
-    zoom = 4
+if imagetype == 'CROP':
+    stack = np.zeros((23, x2-x1, y2-y1))
+elif imagetype == 'STACK':
+    stack = np.zeros((23, 4096, 4096))
+
+filenames = [filename for filename in os.listdir(datapath)]
+filenames = sorted(filenames)
+for i, filename in enumerate(filenames):
+    filepath = Path(datapath).joinpath(filename)
+    if imagetype == 'CROP':
+        stack[i] = tiff.imread(filepath)[x1:x2, y1:y2]
+    elif imagetype == 'STACK':
+        stack[i] = tiff.imread(filepath)[..., 2]
+```
+
+```{python}
+stack = tiff.imread(datapath)
+# image = np.zeros((2, *stack.shape))
+# image[0]=stack
+# image[1]=stack
+```
+
+```{python}
+stack.shape
+```
+
+```{python}
+w = napari.view_image(stack)
+# w.add_image(tiff.imread(filepath)[..., 2])
+```
+
+```{python}
+stack = stack[1:9]
+```
+
+# Выделение отдельных клеток
+
+```{python}
+cell_choosing_viewer = napari.view_image(stack[6])
+```
+
+```{python}
+class Cell():
+    def __init__(self, region=None, image=None):
+        self.region = region
+        self.image = image
+```
+
+```{python}
+cell_choosing_viewer.layers[1].data
+```
+
+```{python}
+cells = []
+layer_name = '{}_cell_select.csv'.format(os.path.basename(filename))
+
+if layer_name in :
+    layer.save(os.path.join(output_dir, layer_name)) 
+
+
+for layer in cell_choosing_viewer.layers:
+    if type(layer) is napari.layers.shapes.shapes.Shapes:      
+        for arr in layer.data:
+            r = np.array([arr.min(axis=0), arr.max(axis=0)], dtype=int)
+            cells.append(Cell(r, stack[:12, r[0][0]:r[1][0], r[0][1]:r[1][1]]))
+            
+```
+
+```{python}
+# w = napari.view_image(np.zeros((1,1,1)))
+# for cell in cells:
+#     print(cell.region, cell.image.shape)
+#     w.add_image(cell.image)
     
-print(zoom)
+```
+
+# Анализ клеток
+
+```{python}
+# cell = cells[0]
+cell = Cell(image=final_image)
+
+print('Center')
+obj = ao.AstrObject(cell.image)
+obj.center_detection()
+```
+
+```{python}
+print('Soma Mask')
+# %time obj.soma_segmentation(return_shell=True)
+```
+
+```{python}
+if VERBOSE:
+    w = napari.view_image(cell.image, ndisplay=3, opacity=0.5)
+    w.add_image(obj.soma_mask, blending='additive', colormap='magenta')
+```
+
+```{python}
+print('Branch Segmentation')
+# %time obj.branch_segmentation((1,), sigmas=sigmas)
+```
+
+```{python}
+if VERBOSE:
+    w = napari.view_image(cell.image, ndisplay=3, opacity=0.5)
+    w.add_image(obj.sigma_mask, blending='additive', colormap='turbo')
+```
+
+```{python}
+print('Full Graph')
+# %time obj.full_graph_plotting(alpha, beta)
+```
+
+```{python}
+def draw_edges(pos, edgelist):
+    return np.asarray([[pos[n1], pos[n2]] for n1, n2 in edgelist])
+if VERBOSE:
+    w = napari.view_image(cell.image, ndisplay=3, opacity=0.5)
+    points = np.array([n for n in obj.full_graph.nodes])
+    img_test = np.zeros(cell.image.shape)
+    img_test[points[:,0], points[:,1], points[:,2]] = 1
+    w.add_image(img_test, blending='additive')
+    pos = {n:n for n in obj.full_graph.nodes}
+    edges = draw_edges(pos, list(obj.full_graph.edges))
+    w.add_shapes(edges[:1000], shape_type='line', edge_width=0.1)
+```
+
+```{python}
+print('Graph')
+# %time obj.astro_graph_plotting(min_path_length=10)
+graph = obj.graph
+```
+
+```{python}
+if VERBOSE:
+    w =  napari.view_image(cell.image, ndisplay=3, opacity=0.5)
+#     w.add_image(sigma_mask, colormap='turbo', blending='additive', visible=False)
+    graph.view_graph_as_colored_image(cell.image.shape, w);
+    napari.run()
+```
+
+Так как тестовый вариант, то сначала считаем для одной клетки
+
+```{python}
+# image = cells[2].image
+# napari.view_image(image)
+image = stack
 ```
 
 # Предобработка изображения
@@ -212,101 +336,34 @@ clahe = cv2.createCLAHE(clipLimit =2.0, tileGridSize=(8,8))
 ```
 
 ```{python}
-stack_shape = stack.shape
-img_clahe = np.zeros(stack.shape, np.float32)
-for k,plane in enumerate(stack):
-    img_clahe[k] = clahe.apply(plane)
+stack_shape = image.shape
+img_clahe = np.zeros(image.shape, np.float32)
+for k, plane in enumerate(image):
+    img_clahe[k] = clahe.apply(plane.astype('uint8'))
 ```
 
 ```{python}
 if VERBOSE:
-    wi = napari.view_image(stack, ndisplay=3, scale=(zoom, 1,1), name='raw', colormap='magenta')
-    wi.add_image(img_clahe, scale=(zoom,1,1), name='CLAHE',colormap='magenta')
-```
-
-```{python}
-plt.figure()
-plt.hist(np.ravel(stack), 100, histtype='step', log=True, label='original');
-plt.hist(np.ravel(img_clahe), 100, histtype='step', log=True, label='CLAHE');
-plt.title("")
-plt.ylabel('Number of pixels')
-plt.xlabel('brightness')
-plt.legend()
+    wi = napari.view_image(image, ndisplay=3, scale=(1, 1,1), name='raw', colormap='magenta')
+    wi.add_image(img_clahe, scale=(1,1,1), name='CLAHE',colormap='magenta')
 ```
 
 ```{python}
 # check if use clahe or not
-img = img_clahe if use_clahe else stack
-```
-
-## Кадрирование
-
-```{python}
-max_proj = img.max(0)
-```
-
-```{python}
-domain_mask = ndi.binary_dilation(largest_region(remove_small_objects(max_proj > 0.5*threshold_li(max_proj))), iterations=3)
-domain_mask = ndi.binary_closing(domain_mask,iterations=3)
-```
-
-```{python}
-plt.imshow(max_proj, cmap='gray')
-plt.contour(domain_mask, colors=['r'], levels=[0.5])
-```
-
-```{python}
-img_cropped = np.array([crop_image(plane,domain_mask, margin=10) for plane in img])
-```
-
-```{python}
-max_proj_1 = img_cropped.max(1)
-domain_mask_1 = ndi.binary_dilation(largest_region(remove_small_objects(max_proj_1 > 0.5*threshold_li(max_proj_1))), iterations=3)
-domain_mask_1 = ndi.binary_closing(domain_mask_1,iterations=3)
-plt.imshow(max_proj_1, cmap='gray')
-plt.contour(domain_mask_1, colors=['r'], levels=[0.5])
-```
-
-```{python}
-img_cropped = np.array([crop_image(img_cropped[:,i],domain_mask_1, margin=10) for i in range(img_cropped.shape[1])]).swapaxes(0,1)
-```
-
-```{python}
-if VERBOSE:
-    w = napari.view_image(img_cropped)
-```
-
-## Масштабирование
-
-
-Важный вопрос, как сделать одинаковым масштаб по осям z и xy. Можно downsample XY, можно upsample (by interpolation) Z. Можно комбинировать. В этом ноутбуке проверяем, что будет, если не делать пересэмплирование по Z.
-
-```{python}
-downscale = 2
-# #%time img_noisy = ndi.zoom(img_cropped.astype(np.float32), (zoom/downscale, 1/downscale, 1/downscale), order=1)
-img_noisy = ndi.zoom(img_cropped.astype(np.float32), (1, 1/downscale, 1/downscale))
-```
-
-```{python}
-scale = (zoom/downscale, 1, 1)
-print(scale)
-if VERBOSE:
-    napari.view_image(img_noisy, scale=scale)
-```
-
-```{python}
-plt.imshow(img_noisy.max(0), cmap='gray')
-```
-
-```{python}
-img.shape, img_noisy.shape
-```
-
-```{python}
-# img_noisy = img_cropped
+img = img_clahe # if use_clahe else stack
 ```
 
 ## Фильтрация изображения
+
+```{python}
+img_noisy = image /255
+img_noisy.min(), img_noisy.max()
+```
+
+```{python}
+from skimage.filters import threshold_minimum, threshold_local, threshold_yen, threshold_isodata, rank, threshold_otsu
+from skimage.morphology import disk, ball
+```
 
 ```{python}
 def filter_image(image, filter_func):
@@ -315,19 +372,50 @@ def filter_image(image, filter_func):
     pre_mask = ndi.binary_closing(image >= threshold)
     pre_mask = remove_small_objects(pre_mask, 5, connectivity=3)
     binary_clean = largest_region(pre_mask)
-    return np.where(binary_clean, image, 0)
+    return np.where(binary_clean, image, 0), threshold
 ```
 
 ```{python}
-threshold_li(stack)
+img_li, li = filter_image(img_noisy, threshold_li)
+img_min, m = filter_image(img_noisy, threshold_minimum)
+img_iso, iso = filter_image(img_noisy, threshold_isodata)
+img_yen, yen = filter_image(img_noisy, threshold_yen)
+# img_loc, loc = filter_image(img_noisy, threshold_local)
 ```
 
 ```{python}
-img_clear = filter_image(img_noisy, threshold_li)
+img_tr, tr = filter_image(img_noisy, threshold_triangle)
+img_ots, ots = filter_image(img_noisy, threshold_otsu)
 ```
 
 ```{python}
-final_image = img_clear
+plt.hist(np.ravel(img_noisy), bins=255)
+plt.axvline(li, color='red', label='li')
+plt.axvline(m, color='orange', label='min')
+plt.axvline(iso, color='green', label='iso')
+plt.axvline(yen, color='black', label='yen')
+plt.axvline(ots, color='blue', label='otsu')
+plt.axvline(tr, color='yellow', label='triangle')
+plt.legend()
+# plt.hist(np.ravel(img_clear), bins=255)
+plt.show()
+```
+
+```{python}
+w = napari.view_image(img_noisy)
+w.add_image(img_li)
+w.add_image(img_tr)
+w.add_image(img_min)
+w.add_image(img_iso)
+w.add_image(img_yen)
+w.add_image(img_ots)
+w.add_image(img)
+```
+
+Лучше всего работает Yen, но Iso лучше
+
+```{python}
+final_image = image
 final_image.shape
 ```
 
@@ -361,23 +449,25 @@ domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
 
 ```{python}
 if VERBOSE:
-    w = napari.view_image(img_noisy)
-    w.add_image(final_image, colormap='magenta', blending='additive')
+    w = napari.view_image(final_image)
+#     w.add_image(final_image, colormap='magenta', blending='additive')
     w.add_image(domain_shell_mask, colormap='green', blending='additive')
     w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
 ```
 
 ```{python}
+import skeletonization as skelet
+```
 
+```{python}
+from importlib import reload
+reload(skelet)
 ```
 
 # Сегментация сомы
 
-
-## Определение центра
-
 ```{python}
-import itertools as itt
+from skimage.morphology import flood
 ```
 
 ```{python}
@@ -387,71 +477,97 @@ def percentile_rescale(arr, plow=1, phigh=99.5):
         return np.zeros_like(arr)
     else:
         return np.clip((arr-low)/(high-low), 0, 1)
-```
 
-```{python}
+
 def flat_indices(shape):
     idx = np.indices(shape)
     return np.hstack([np.ravel(x_)[:,None] for x_ in idx])
+
 ```
 
 ```{python}
 X1a = flat_indices(final_image.shape)
-```
-
-```{python}
-# %time weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image,5))**2,plow=99.5,phigh=99.99)
-```
-
-```{python}
+weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image,5))**2,plow=99.5,phigh=99.99)
 center = tuple(map(int, np.sum(X1a*weights_s[:,None],axis=0)/np.sum(weights_s)))
+```
+
+```{python}
+smooth_stack = ndi.gaussian_filter(final_image, 3)
+tol = (smooth_stack.max() - smooth_stack[image>0].min())/10
+soma_seed_mask = flood(smooth_stack, center, tolerance=tol)
+```
+
+```{python}
+w = napari.view_image(final_image, opacity=0.5)
+w.add_image(soma_seed_mask, colormap='magenta', blending='additive')
+```
+
+```{python}
+soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=10)
+```
+
+```{python}
+soma_shell = get_shell_mask(soma_mask, as_points=True)
+```
+
+```{python}
+np.array([np.array(center)])
+```
+
+```{python}
+w = napari.view_image(final_image)
+w.add_image(soma_seed_mask)
+w.add_image(soma_mask)
+w.add_points(data=np.array(center))
+# w.add_image(soma_shell)
+```
+
+# Ручное выделение клетки
+
+```{python}
+final_image = img
+```
+
+```{python}
+region_choosing = napari.view_image(final_image)
+napari.run()
+```
+
+```{python}
+idx = region_choosing.layers[1].data[0].astype(int)
+```
+
+```{python}
+from skimage.draw import polygon, polygon2mask, polygon_perimeter
+mask = np.zeros(final_image.shape, dtype=bool)
+rr, cc = polygon(idx[:,1], idx[:,2], final_image.shape[1:])
+mask[4, rr, cc] = 1
+```
+
+```{python}
+# flats = np.array([(i, r, c) for i in range(final_image.shape[0]) for r,c in zip(rr, cc)])
+flats = np.array([(4, r, c) for r,c in zip(rr, cc)])
+weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image[mask],5))**2,plow=99.5,phigh=99.99)
+center = tuple(map(int, np.sum(flats*weights_s[:,None],axis=0)/np.sum(weights_s)))
+```
+
+```{python}
 center
 ```
 
-## Выделение сомы
-
 ```{python}
-from skimage.morphology import dilation, skeletonize, flood
+test_mask = mask[:]
+test_mask[:, rr, cc] = 1
+img[~test_mask] = 0
+napari.view_image(img)
 ```
 
 ```{python}
-from astromorpho import morpho
-```
 
-**Альтернативный подход к сегментации сомы**
-1. Работаем со сглаженным стеком
-2. делаем первичную маску как flood из центра с толерантностью в 10% разницы между максимальным и минимальным значениями в стеке
-3. Разрастаем (аналог flood) первичную маску в несколько итераций
-
-```{python}
-#soma_mask = largest_region(np.where(dilation(eroded), True, False))
-#soma_mask = largest_region(final_image >= np.percentile(final_image, 99))
-
-smooth_stack = ndi.gaussian_filter(final_image, 3)
-tol = (smooth_stack.max() - smooth_stack[final_image>0].min())/10
-
-print('tol:',tol)
-# %time soma_seed_mask = flood(smooth_stack, center, tolerance=tol)
 ```
 
 ```{python}
-# %time soma_mask = morpho.expand_mask(soma_seed_mask, smooth_stack, iterations = 10)
-```
 
-```{python}
-#VERBOSE=True
-```
-
-```{python}
-if VERBOSE:
-    w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
-    w.add_image(soma_seed_mask, blending='additive', colormap='cyan')
-    w.add_image(soma_mask, blending='additive', colormap='magenta')
-    
-```
-
-```{python}
-# %time soma_shell = get_shell_mask(soma_mask, as_points=True)
 ```
 
 # Сегментация веток
@@ -462,20 +578,16 @@ if VERBOSE:
 ```{python}
 if HANDY:
     #sigmas = 2**np.arange(-1, 3, 0.5)
-    sigmas = 2**np.arange(0, 5, 0.5)
-```
-
-```{python}
-scale
-```
-
-```{python}
-sigmas
+    sigmas = 2**np.arange(0.5, 5, 0.5)
 ```
 
 ```{python}
 sato_coll = {}
 Vf_coll = {}
+```
+
+```{python}
+scale = (2,)
 ```
 
 ```{python}
@@ -515,11 +627,13 @@ from ucats import masks as umasks
 ```
 
 ```{python}
+w = napari.view_image(final_image)
 masks = {}
 for sigma in tqdm(sigmas):
     sato = sato_coll[sigma]
     threshold = threshold_li(sato[sato>0])*sigma**0.5
     masks[sigma] = remove_small_objects(sato > threshold, min_size=int(sigma*64))
+    w.add_image(masks[sigma], blending='additive')
 ```
 
 Некоторые маски обнуляются для больших сигм. Это значит, что они не несут важной информации и их можно исключить из рассмотрения
@@ -560,7 +674,7 @@ for k in range(len(sigmas)-2,-1,-1):
 Определение оптимальной сигмы
 
 ```{python}
-fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
+fig, axs = plt.subplots(2, 4, figsize=(8,4), sharex=True)
 mask_threshs = {}
 
 for ax, sigma in zip(np.ravel(axs), sigmas):
@@ -578,15 +692,17 @@ for ax, sigma in zip(np.ravel(axs), sigmas):
 
 ```{python}
 for sigma, mask in masks.items():
+    print(sigma)
     pre_mask = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
     masks[sigma] = pre_mask
 ```
 
 ```{python}
 if VERBOSE:
-    w = napari.view_image(final_image, )
+    w = napari.view_image(final_image)
     for sigma in sigmas:
         sato = sato_coll[sigma]
+        w.add_image(sato)
         w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}', colormap='red')
 ```
 
@@ -609,16 +725,6 @@ for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
 
 ```{python}
 len(sigmas)
-```
-
-```{python}
-if VERBOSE:
-    idx = len(sigmas)
-    w = napari.view_image(final_image, opacity=0.5)
-    w.add_image(soma_mask, colormap='magenta', blending='additive')
-    w.add_image(sigma_sato==idx, name='sigma_sato==idx')
-    w.add_image(masks[id2sigma[idx]], name='mask for sigma')
-    w.add_image(sigma_sato)
 ```
 
 ## Объединение собственных векторов различных сигм
@@ -658,49 +764,6 @@ final_image.shape
 
 ```{python}
 if VERBOSE:    
-    sigma_id = -1
-    sigma = sigmas[sigma_id]
-    print(sigma)
-    w = napari.view_image(final_image, opacity=0.5)
-#     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
-
-    for sigma in masks:
-        emask = masks_exclusive[sigma]
-        print('Emask shape:', emask.shape)
-        vectors = vectors_best[emask]
-        print('Vectors shape:', vectors.shape)
-        nd, nr, nc = final_image.shape
-        #indexgrid = np.meshgrid(np.arange(nd), np.arange(nr), np.arange(nc), indexing='ij')
-        indexgrid = np.mgrid[:nd, :nr, :nc]
-        print('Indexgrid shape:', indexgrid[0].shape)
-
-        z, y, x = [np.ravel(a[emask]) for a in indexgrid]
-        z1, y1, x1 = vectors[:,0], vectors[:,1], vectors[:,2]
-
-        print('XYZ shapes:', x.shape, y.shape, z.shape)
-        print('X1Y1Z1 shapes:', x1.shape, y1.shape, z1.shape)
-
-        vecs = np.zeros((vectors.shape[0], 2, 3))
-
-        vecs[..., 0, 0] = z
-        vecs[..., 0, 1] = y
-        vecs[..., 0, 2] = x
-        #
-        vecs[..., 1, 0] = z1
-        vecs[..., 1, 1] = y1
-        vecs[..., 1, 2] = x1
-        #
-        properties = {'length': hout[masks_exclusive[sigma]]}
-        w.add_vectors(vecs, edge_width=0.2,
-                      length=1,  
-                      properties=properties,
-                      edge_color='length', 
-                      name=f'σ={sigmas[sigma_id]:02f}', 
-                      edge_colormap='inferno')
-```
-
-```{python}
-if VERBOSE:    
     w = napari.view_image(final_image, )
     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
     for sigma, color in zip(masks, itt.cycle(colors)):
@@ -718,20 +781,10 @@ if VERBOSE:
     w.add_image(qnorm, blending='additive', name='qnorm', contrast_limits=(qnorm[qnorm>0].min(), qnorm.max()))
 ```
 
-```{python}
-skel_coll = {sigma: astro.morpho.peaks_in_stack(sato_coll[sigma],masks[sigma])>3 for sigma in tqdm(sigmas)}
-```
-
-```{python}
-w = napari.view_image(final_image, opacity=0.5)
-for sigma, skel in skel_coll.items():
-    w.add_image(skel, name='sigma: {:0.2f}'.format(sigma), blending='additive')
-```
-
-# Построение графа
+## Построение графа
 
 <!-- #region -->
-## Выражение для весов ребер
+### Выражение для весов ребер
 
 В качестве весов мы используем dissimilarities (неcхожести между узлами,  расстояния). 
 
@@ -914,6 +967,12 @@ idx.shape
 ```
 
 ```{python}
+i, j= np.indices(final_image.shape[1:])
+idx2d = np.stack((i,j), axis=2)
+idx2d.shape
+```
+
+```{python}
 crops = prep_crops()
 ```
 
@@ -955,16 +1014,16 @@ for crop, acrop in tqdm(crops):
                                                   offset=offset, verbose=False))
 ```
 
-### No-no for too big sigma_jumps
+#### No-no for too big sigma_jumps
 (Could also be a papermill flag)
 
 ```{python}
 for p1, p2, data in tqdm(graph.edges(data=True)):
     if np.abs(sigma_mask[p1]-sigma_mask[p2]) > 1:
-        graph.add_edge(p1,p2, weight=data['weight']*2)
+        graph.add_edge(p1,p2, weight=data['weight']*10)
 ```
 
-## Добавление точек оболочки сомы в граф
+### Добавление точек оболочки сомы в граф
 
 ```{python}
 def get_mask_vals(idxs, mask):
@@ -1009,6 +1068,10 @@ sigma_mask[soma_shell_mask] = sigma2id[sigmas[-1]] # Soma is also the largest sc
 ```
 
 ```{python}
+import graph_utils as gu 
+```
+
+```{python}
 id2sigma[0] = 0
 nx.set_node_attributes(graph, 
                        gu.get_attrs_by_nodes(graph, sigma_mask, lambda x: id2sigma[x]), 
@@ -1016,7 +1079,7 @@ nx.set_node_attributes(graph,
 ```
 
 ```{python}
-len(graph.edges())
+gu.get_tips(graph)
 ```
 
 ## Расчет путей, встречаемости точек в путях и слияние графов по путям
@@ -1100,7 +1163,7 @@ def compose_path_segments(G, seq_paths, ultimate_targets, max_start_sigma=2, min
     gx_all = gu.batch_compose_all(new_paths)
     
     counts = gu.count_points_paths(new_paths)
-    qstack = np.zeros(stack_shape)
+    qstack = np.zeros(stack.shape)
     for p,val in counts.items():
         if val >= 1:
             qstack[p] = np.log(val) 
@@ -1124,11 +1187,17 @@ def compose_path_segments(G, seq_paths, ultimate_targets, max_start_sigma=2, min
 ```
 
 ```{python}
-# %time gx_all = compose_path_segments(graph, seq_paths, ultimate_targets=set(soma_shell))
+gx_all = nx.compose_all([seq_paths[sigma] for sigma in sorted(seq_paths)])
+
 ```
 
 ```{python}
+g = AG(gx_all)
+g.get_tips()
+```
 
+```{python}
+# %time gx_all = compose_path_segments(graph, seq_paths, ultimate_targets=set(soma_shell))
 ```
 
 ```{python}
@@ -1162,8 +1231,9 @@ for ax, sigma in zip(np.ravel(axs), sigmas):
     occ_threshs[sigma] = th
     ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
     ax.hist(v_occ, 50)
-    ax.axvline(th, color='red')
-    ax.axvline(th_tr, color='green')
+    ax.axvline(th, color='red', label='li')
+    ax.axvline(th_tr, color='green', label='tr')
+    ax.legend()
     
 ```
 
@@ -1206,15 +1276,19 @@ VERBOSE=True
 ```{python}
 if VERBOSE:
     w =  napari.view_image(final_image, ndisplay=3, opacity=0.5)
+#     w.add_image(sigma_mask, colormap='turbo', blending='additive', visible=False)
+    vis.view_graph_as_colored_image(gx_all, final_image.shape, w);
+    napari.run()
+```
+
+```{python}
+if VERBOSE:
+    w =  napari.view_image(final_image, ndisplay=3, opacity=0.5)
     w.add_image(sigma_mask, colormap='turbo', blending='additive', visible=False)
     vis.view_graph_as_colored_image(gx_all_occ, final_image.shape, w);
     napari.run()
 #     w.screenshot(os.path.join(output_dir, '{}_graph.png'.format(filename)))
 #     w.close()
-```
-
-```{python}
-w.add_image(soma_mask, blending='additive')
 ```
 
 ```{python}
@@ -1229,13 +1303,7 @@ _ = 1
 # Сохранение
 
 ```{python}
-import astrocyte
 import pickle
-```
-
-```{python}
-import importlib
-importlib.reload(astrocyte)
 ```
 
 ```{python}
@@ -1245,23 +1313,16 @@ filename
 ```{python}
 if OUT:
     pickle_name = os.path.join(output_dir, str(filename) + '-sequential_graph.pickle')
-    astrocyte_cell = astrocyte.Astrocyte(final_image.copy(), gx_all_occ.copy(), sigma_mask, 
-                               {'filename': filename, 'shape': final_image.shape,
-                                'id2sigma': id2sigma, 'sigma2id': sigma2id})
-    # %time pickle.dump(astrocyte_cell, open(pickle_name, 'wb'))
+    # %time pickle.dump(gx_all_occ.copy(), open(pickle_name, 'wb'),)
 ```
 
 ```{python}
-# %time obj = pickle.load(open(pickle_name, 'rb'))
+# # %time thin_graph2 = pickle.load(open(pickle_name, 'rb'))
 ```
 
 ```{python}
-type(thin_graph2)
-```
-
-```{python}
-w =  napari.view_image(obj.image, ndisplay=3, opacity=0.5)
-vis.view_graph_as_colored_image(obj.graph, final_image.shape, w);
+# w =  napari.view_image(final_image, ndisplay=3, opacity=0.5)
+# vis.view_graph_as_colored_image(thin_graph2, final_image.shape, w);
 ```
 
 ```{python}
@@ -1283,4 +1344,32 @@ vis.view_graph_as_colored_image(obj.graph, final_image.shape, w);
 
 ```{python}
 # loaded_graph = nx.read_gml('gx_all_{}.gml.gz'.format(os.path.basename(filename)), destringizer=str2tup)
+```
+
+```{python}
+
+```
+
+```{python tags=c()}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+
 ```

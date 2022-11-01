@@ -41,7 +41,7 @@ from numpy.random import randint
 ```
 
 ```{python}
-import hessian_cecp as hcecp
+# import hessian_cecp as hcecp
 from imfun import fseq
 ```
 
@@ -77,7 +77,7 @@ def add_napari(img, w, name):
 Путь к изображениям
 
 ```{python tags=c("parameters")}
-data_path = '/home/incredible/Neuroscience/Code/data'
+data_path = '/home/levtg/astro-morpho/data/'
 ```
 
 ```{python}
@@ -94,11 +94,12 @@ names.pop(names.index('/home/incredible/Neuroscience/Code/data/4wk-both5-red-raw
 ## Выбираем рандомную картинку
 
 ```{python}
-k = randint(len(names))
-# k = 0
-# k = names.index('/home/incredible/Neuroscience/Code/data/3wk-ly1-raw.pic')
-print(k, names[k])
-stack, meta = ccdb.read_pic(names[k])
+# k = randint(len(names))
+# # k = 0
+# k = names.index('/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic')
+# print(k, names[k])
+filename = '/home/levtg/astro-morpho/data/3wk-both1-grn-raw.pic'
+stack, meta = ccdb.read_pic(filename)
 # stack, meta = ccdb.read_pic('/home/incredible/Neuroscience/selected-for-complexity/data/1wk-both8-red-raw.pic')
 dims = ccdb.get_axes(meta)#[::-1]
 dims
@@ -135,6 +136,10 @@ plt.imshow(stackz.max(0))
 ### Threshold
 
 ```{python}
+import numpy as np
+```
+
+```{python}
 from skimage.filters import threshold_otsu, rank, threshold_yen, threshold_isodata, threshold_li, \
                             threshold_local, threshold_minimum, threshold_mean, threshold_niblack, \
                             threshold_sauvola, threshold_triangle#, threshold_adaptive
@@ -154,7 +159,7 @@ def apply_thresh(image, thresh_func, shape, **kwargs):
 ```
 
 ```{python}
-thresh_image = hcecp.percentile_rescale(stackz)
+thresh_image = enh.percentile_rescale(stackz)
 ```
 
 ```{python}
@@ -163,7 +168,7 @@ gamma_image_1 = adjust_gamma(thresh_image, gamma=1)
 ```
 
 ```{python}
-# w = show_napari(gamma_image_1, name='start_img_gamma_1')
+w = show_napari(gamma_image_1, name='start_img_gamma_1')
 ```
 
 ```{python}
@@ -186,7 +191,7 @@ full_img.shape
 гамма = 0,6
 
 ```{python}
-yen_img, yen_thresh = apply_thresh(full_img_06, threshold_yen, IMG_SHAPE)
+yen_img, yen_thresh = apply_thresh(full_img, threshold_yen, IMG_SHAPE)
 ```
 
 ```{python}
@@ -199,7 +204,7 @@ add_napari(yen_img, name='yen_img', w=w)
 гамма = 0,6
 
 ```{python}
-iso_img, iso_thresh = apply_thresh(full_img_06, threshold_isodata, IMG_SHAPE)
+iso_img, iso_thresh = apply_thresh(full_img, threshold_isodata, IMG_SHAPE)
 ```
 
 ```{python}
@@ -222,15 +227,15 @@ li_img, li_thresh = apply_thresh(full_img, threshold_li, IMG_SHAPE)
 гамма = 0.6
 
 ```{python}
-local_img, local_thresh = apply_thresh(full_img_06, threshold_local, IMG_SHAPE, block_size=3)
-add_napari(local_img, name='local_img', w=w)
+local_img, local_thresh = apply_thresh(full_img, threshold_local, IMG_SHAPE, block_size=3)
+# add_napari(local_img, name='local_img', w=w)
 ```
 
 #### Minimum - Failed
 
 ```{python}
 min_img, min_thresh = apply_thresh(full_img, threshold_minimum, IMG_SHAPE)
-add_napari(min_img, name='min_img', w=w)
+# add_napari(min_img, name='min_img', w=w)
 ```
 
 #### Mean - Failed
@@ -240,7 +245,7 @@ add_napari(min_img, name='min_img', w=w)
 
 ```{python}
 mean_img, mean_thresh = apply_thresh(full_img_06, threshold_mean, IMG_SHAPE)
-add_napari(mean_img, name='mean_img', w=w)
+# add_napari(mean_img, name='mean_img', w=w)
 ```
 
 #### Niblack - Failed
@@ -250,7 +255,7 @@ add_napari(mean_img, name='mean_img', w=w)
 
 ```{python}
 nib_img, nib_thresh = apply_thresh(full_img_06, threshold_niblack, IMG_SHAPE)
-add_napari(nib_img, name='nib_img', w=w)
+# add_napari(nib_img, name='nib_img', w=w)
 ```
 
 #### Sauvola - Failed
@@ -260,7 +265,7 @@ add_napari(nib_img, name='nib_img', w=w)
 
 ```{python}
 sauv_img, sauv_thresh = apply_thresh(full_img_06, threshold_sauvola, IMG_SHAPE)
-add_napari(sauv_img, name='sauv_img', w=w)
+# add_napari(sauv_img, name='sauv_img', w=w)
 ```
 
 #### Triangle - Close to Li
@@ -270,14 +275,14 @@ add_napari(sauv_img, name='sauv_img', w=w)
 
 ```{python}
 tri_img, tri_thresh = apply_thresh(full_img, threshold_triangle, IMG_SHAPE)
-add_napari(tri_img, name='tri_img', w=w)
+# add_napari(tri_img, name='tri_img', w=w)
 ```
 
 #### Adaptive - need newer version
 
 ```{python}
 adapt_img, adapt_thresh = apply_thresh(full_img, threshold_adaptive, img.shape, block_size=3, sigma=1)
-add_napari(adapt_img, name='adapt_img', w=w)
+# add_napari(adapt_img, name='adapt_img', w=w)
 ```
 
 **DEBUG_MODE_ON**
@@ -323,19 +328,19 @@ ax[0][0].set_ylim(0, 10**5+500)
 
 ## Yen
 ax[0][1].imshow(correction_image)
-ax[0][1].imshow((gamma_image_06>=yen_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][1].imshow((gamma_image_1>=yen_thresh).max(0), cmap=cmap1, alpha=0.5)
 ax[0][1].set_title('Yen')
 ax[0][1].axis('off')
 
 ## Iso
 ax[0][2].imshow(correction_image)
-ax[0][2].imshow((gamma_image_06>=iso_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][2].imshow((gamma_image_1>=iso_thresh).max(0), cmap=cmap1, alpha=0.5)
 ax[0][2].set_title('Iso')
 ax[0][2].axis('off')
 
 ## Min
 ax[0][3].imshow(correction_image)
-ax[0][3].imshow((gamma_image_06>=min_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[0][3].imshow((gamma_image_1>=min_thresh).max(0), cmap=cmap1, alpha=0.5)
 ax[0][3].set_title('Min')
 ax[0][3].axis('off')
 
@@ -356,7 +361,7 @@ ax[1][1].axis('off')
 
 ## Li
 ax[1][2].imshow(correction_image)
-ax[1][2].imshow((gamma_image_1>=li_thresh).max(0), cmap=cmap1, alpha=0.5)
+ax[1][2].imshow((thresh_image>li_thresh).max(0), cmap=cmap1, alpha=0.5)
 ax[1][2].set_title('Li')
 ax[1][2].axis('off')
 
