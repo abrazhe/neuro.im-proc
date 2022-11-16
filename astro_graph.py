@@ -55,6 +55,10 @@ class AstroGraph(nx.Graph):
     def edges(self, data=False):
         return self.graph.edges(data=data)
 
+    # @property
+    # def _node(self):
+
+
     def predecessors(self, node):
         return self.graph.predecessors(node)
 
@@ -242,6 +246,97 @@ class AstroGraph(nx.Graph):
         return str(self.graph)
 
 
+    def related_tips(self, root):
+
+        # collect tree nodes
+        coords = [i[0] for i in self.graph.nodes.data()]
+        all_roots = [i[1]["root"] for i in self.graph.nodes.data()]
+
+        #create root-specialized mask
+        x, y, z = root
+        root_mask = (np.array(all_roots)[:,0]==x) & (np.array(all_roots)[:,1]==y) & (np.array(all_roots)[:,2]==z)
+        root_nodes = [tuple(i) for i in np.array(coords)[root_mask]]
+
+        #get all tips
+        my_tips = np.array(list(self.get_tips()))
+
+        #filter tips
+        root_tips = []
+
+        for tip in my_tips:
+            tip = tuple(tip)
+
+            if tip in root_nodes:
+                root_tips.append(tip)
+
+        return root_tips
+
+
+    def root_travel(self, root):
+        root_path = {}
+        root_path[root] = (1, -1)
+        count = 2
+
+        tips = self.related_tips(root)
+
+        for tip in tips:
+            for n in list(nx.shortest_path(self.graph, source=root, target=tip))[1:]:
+                if n in root_path:
+                    continue
+
+                else:
+                    num = count
+                    #parent name
+                    #return list with name of parent node
+                    p_name = nx.predecessor(self.graph, root, n)
+                    parent = root_path[p_name[0]][0]
+                    root_path[n] = (num, parent)
+                    count+=1
+
+        return root_path
+
+    def swc(self, convergence=True):
+
+        roots  = self.get_roots()
+        collection = []
+
+        if convergence == True:
+            #connect all roots for continuous structure
+            convergence = {AstroGraph.roots_convergence(roots): (1, -1)}
+            collection.append(convergence)
+
+
+        for r in tqdm(roots):
+            visit = self.root_travel(r)
+
+            #write first root
+            if not collection:
+                collection.append(visit)
+
+            #write subsequent roots with updated vals
+            else:
+                value = max(collection[-1].values())[0]
+
+                for i in visit.items():
+
+                    #check if current node is root
+                    if i[0] is not r:
+                        new_pos = i[1][0] + value
+                        new_par = i[1][1] + value
+                        visit[i[0]] = (new_pos, new_par)
+
+                    else:
+                        new_pos = i[1][0] + value
+                        # new_par = i[1][1]
+                        new_par = 1
+                        visit[i[0]] = (new_pos, new_par)
+
+                collection.append(visit)
+
+        return collection
+
+
+
     ## USEFUL FUNCTIONS
 
 
@@ -295,3 +390,12 @@ class AstroGraph(nx.Graph):
                 if val >= min_count:
                     qstack[p] = np.log(val)
             return qstack, paths_dict
+
+    @staticmethod
+    def roots_convergence(roots):
+        roots = [r for r in roots]
+        x = list((map(lambda x: x[0], roots)))
+        y = list((map(lambda x: x[1], roots)))
+        z = list((map(lambda x: x[2], roots)))
+
+        return (np.average(x), np.average(y), np.average(z))
