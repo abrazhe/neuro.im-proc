@@ -1,0 +1,630 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.13.7
+  kernelspec:
+    display_name: venv
+    language: python
+    name: venv
+---
+
+```{python}
+import os
+import sys
+import itertools as itt
+
+# File reading
+from pathlib import Path
+import czifile as czi
+import tifffile as tiff
+
+# Image preprocessing
+import cv2
+from skimage.filters import threshold_li, threshold_minimum, threshold_triangle
+from skimage.morphology import remove_small_objects
+
+
+# Calculations
+from scipy import ndimage as ndi
+import numpy as np
+
+# Analysis
+import astrobject as ao
+import ccdb
+import astromorpho as astro
+import ucats
+
+# Viewing
+import napari
+import matplotlib.pyplot as plt
+# %matplotlib inline
+
+# Saving
+import pickle
+
+# Beauty
+from tqdm.auto import tqdm
+
+# Utils
+from importlib import reload
+```
+
+```{python}
+plt.rcParams["figure.figsize"] = (10,10)
+plt.rcParams['image.cmap'] = 'gray'
+```
+
+```{python}
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+colors = ["black", "red"]
+cmap1 = LinearSegmentedColormap.from_list("mycmap", colors)
+```
+
+# Параметры для запуска
+
+```{python tags=c("parameters")}
+if os.path.exists('/home/levtg/astro-morpho'):
+    data_dir = '/home/levtg/astro-morpho/data/human_glauk/'
+else:
+    print("Dont know where to look for the data")
+
+output_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
+
+filename = 'T1.tif'
+
+use_clahe = True
+sigmas = 2**np.arange(-5, 3, 0.5)
+alpha = 0.5 # relative weight of coside distance between Hessian vector and linkage vector
+beta = 0.0  # weight of Euclidean distance between the nodes 
+offset=1
+
+VERBOSE = True
+
+USE_NAPARI = True
+
+
+# Set false to start from console
+HANDY = True
+
+# Set true to save output
+OUT = True
+LOAD = False
+```
+
+# Считывание изображения
+
+```{python}
+if HANDY:
+    VERBOSE = True
+```
+
+```{python}
+datapath = Path(data_dir).joinpath(filename)
+# datapath = Path(data_dir).joinpath(filename)
+datapath
+```
+
+```{python}
+# tifname = Path(str(datapath)[:-3] + 'tif')
+
+# if tifname.exists():
+#     stack = tiff.imread(tifname)
+# else:
+#     raise Exception('ALARM!!!')
+# # else:
+# #     czi.czi2tif(datapath, tiffile=tifname)
+# #     stack = tiff.imread(tifname)[2]
+# stack.shape
+```
+
+```{python}
+stack = tiff.imread(datapath)
+if len(stack.shape) == 4:
+    stack = stack[2]
+```
+
+```{python}
+stack.shape
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(stack, ndisplay=3)
+    else:
+        imgplot = plt.imshow(np.sum(stack, axis=0))
+        plt.show()
+```
+
+# Удаление пипетки
+
+```{python}
+import pipette_segmentation as ps
+```
+
+```{python}
+image = stack
+```
+
+```{python}
+simple_mask = ps.make_simple_mask(image)
+sato_mask = ps.make_sato_mask(image)
+masks3 = ps.combine_masks(image, simple_mask, sato_mask)
+
+vx = masks3.sum(axis=(1,2))
+vx_sato = ps.st_roll(sato_mask).sum(axis=(1,2))
+
+try:
+    kink = ps.find_kink(vx)
+except :
+    #print(E)
+    kink = len(vx)
+
+masks3a = masks3.copy()
+masks3a[kink:]=0
+masks3a = ucats.masks.largest_region(masks3a)
+```
+
+```{python}
+use_kink = True
+```
+
+```{python}
+masks3_final = masks3a if use_kink else masks3
+masks3_final = np.moveaxis(masks3_final,0,2)
+
+show_stack = (image*(~(ndi.binary_dilation(masks3_final,iterations=3)))).astype(np.float64)
+```
+
+```{python cell_style="center"}
+if VERBOSE:
+    if USE_NAPARI:
+        napari.view_image(show_stack, ndisplay=3)
+    else:
+        imgplot = plt.imshow(np.sum(show_stack, axis=0), cmap='turbo')
+        plt.show()
+```
+
+# Предобработка изображения
+
+
+## Фильтрация изображения
+
+```{python}
+def largest_region(mask):
+    labels, nlab = ndi.label(mask)
+    if nlab > 0:
+        objs = ndi.find_objects(labels)
+        sizes = [np.sum(labels[o]==k+1) for k,o in enumerate(objs)]
+        k = np.argmax(sizes)
+        return labels==k+1
+    else:
+        return mask
+```
+
+```{python}
+def filter_image(image, filter_func):
+    threshold = filter_func(image)
+    #img_filt = np.where(image > threshold, image, 0)
+    pre_mask = ndi.binary_closing(image >= threshold)
+    pre_mask = remove_small_objects(pre_mask, 5, connectivity=3)
+    binary_clean = largest_region(pre_mask)
+    return np.where(binary_clean, image, 0)
+```
+
+```{python}
+img = show_stack
+```
+
+```{python}
+clean_img = filter_image(img, threshold_li)
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(clean_img, opacity=0.5) 
+#         w.add_image(clean_img, blending='additive')
+    else:
+        show_image = np.sum(clean_img, axis=0)
+        imgplot = plt.imshow(show_image, cmap='turbo')
+        plt.show()
+```
+
+## Очистка изображения
+
+```{python}
+sigma = 6
+```
+
+```{python}
+def get_blobs(image, sigma):
+    frangi, blobness = astro.morpho.frangi(image, sigma, beta=0.5, return_blobness=True)
+    blobness2 = astro.enh.percentile_rescale(ndi.gaussian_filter(blobness, sigma), 0.1, 99.99)**2
+    frangi_weights = astro.enh.percentile_rescale(frangi, 0.1, 99.9)
+    mx = ucats.masks.threshold_object_size((frangi_weights > 0.5)*(blobness2 < 0.1), 27)
+    saved_blobs = ucats.masks.select_overlapping(blobness2 > 0.1, ndi.binary_dilation(mx))
+    return saved_blobs
+```
+
+```{python}
+sigmas_clear = np.linspace(4, 10, 13)
+```
+
+```{python}
+sigmas_clear
+```
+
+```{python}
+w = napari.view_image(clean_img, ndisplay=3, visible=True, colormap='magenta')
+
+for sigma in tqdm(sigmas_clear):
+    blobs = get_blobs(clean_img, (sigma/2, sigma, sigma))
+    w.add_image(blobs, colormap='cyan',blending='additive',visible=True)    
+
+```
+
+# Анализ
+
+```{python}
+obj = ao.AstrObject(clean_img)
+print('Center')
+obj.center_detection()
+obj.center
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(obj.image, opacity=0.5, ndisplay=3)
+        w.add_points(obj.center)
+    else:
+        show_image = np.sum(obj.image, axis=0)
+        imgplot = plt.imshow(show_image)
+        plt.scatter(*obj.center[:0:-1], c='r')
+        plt.show()
+```
+
+```{python}
+print('Soma Mask')
+# %time obj.soma_segmentation(return_shell=True)
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(obj.image, opacity=0.5, ndisplay=3)
+        w.add_image(obj.soma_mask, blending='additive', colormap='red')
+    else:
+        show_image = np.sum(obj.image, axis=0)
+        imgplot = plt.imshow(show_image)
+        plt.imshow(np.sum(obj.soma_mask, axis=0), cmap=cmap1, alpha=0.4)
+        plt.show()
+```
+
+```{python}
+print('Branch Segmentation')
+# %time obj.branch_segmentation((1,), sigmas=sigmas)
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(obj.image, opacity=0.5, ndisplay=3)
+        w.add_image(obj.sigma_mask, blending='additive', colormap='turbo')
+        for sigma in obj.sigmas:
+            w.add_image(obj.masks_exclusive[sigma], blending='additive', name='sigma {:.2f}'.format(sigma))
+    else:
+        show_image = np.sum(obj.image, axis=0)
+        imgplot = plt.imshow(show_image)
+        mask_image = obj.sigma_mask.copy()
+        mask_image[obj.soma_mask] = 50
+        
+        plt.imshow(np.sum(mask_image, axis=0), cmap='turbo', alpha=0.5)
+        plt.show()
+```
+
+```{python}
+print('Full Graph')
+# %time obj.full_graph_construction(alpha, beta, preventing_jumps=False)
+```
+
+```{python}
+def save_points(viewer, path=None):
+    "Convert layers of a napari Viewer to a pickleable format and save to a file if path is given"
+    layer_data = np.array([tuple(map(int, p)) for p in w.layers[1].data])
+    if path is not None:
+        #_ = v.screenshot(path.stem + '-snapshot.png')
+        np.save(path, arr=layer_data)
+    return layer_data
+
+def load_my_rois(path, viewer=None):
+    "load pickled layers data and add to a napari Viewer if given"
+    if isinstance(path, (Path, str)):
+        print('loading from file')
+        layer_data = pickle.load(open(path, 'rb'))
+    else:
+        layer_data = path
+    layers = [napari.layers.Layer.create(ld[0] if np.size(ld[0]) else None, 
+                                         ld[1], ld[2]) for ld in layer_data]
+    if viewer is not None:
+        for ll in layers:
+            viewer.add_layer(ll)
+    return layers
+
+def initiate_point_picker(image, soma_shell=None):
+    w = napari.Viewer()
+    w.add_image(image, blending='additive', name='cell', opacity=0.75, colormap='gist_earth')
+    if soma_shell is not None:
+        w.add_image(soma_shell, blending='additive', name='shell', colormap='red')
+    tips_layer = w.add_points(edge_color='red', face_color='red', symbol='+', size=1, name='tips', ndim=3)
+    sources_layer = w.add_points(edge_color='green', face_color='green', symbol='+', size=1, name='sources', ndim=3)
+    return w
+```
+
+```{python}
+point_picker = initiate_point_picker(obj.image, obj.soma_shell_mask)
+```
+
+```{python}
+if LOAD:
+    points = np.load(numpy_name)
+    tips = [tuple(map(int, p)) for p in points['tips']]
+    sources = [tuple(map(int, p)) for p in points['sources']]
+```
+
+```{python}
+point_picker.add_image(obj.sigma_mask)
+```
+
+```{python}
+tips = [tuple(map(int, p)) for p in point_picker.layers[2].data]
+sources = [tuple(map(int, p)) for p in point_picker.layers[3].data]
+```
+
+```{python}
+print('Targets Graph')
+# %time obj.tips_graph_creation(tips=tips, sources=sources)
+```
+
+```{python}
+obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=point_picker)
+```
+
+```{python}
+_ = -1
+```
+
+```{python}
+point_picker.add_image(obj.sigma_mask)
+```
+
+```{python}
+if VERBOSE:
+    if USE_NAPARI:
+        w = napari.view_image(obj.image, ndisplay=3, opacity=0.5)
+        obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=w)
+    else:
+        test_image = np.zeros(img.shape)
+        points = np.array(list(obj.graph.nodes))
+        test_image[points[:,0], points[:,1], points[:,2]] = 1
+        
+        sum_img = np.sum(test_image, axis=0)
+        sum_img[sum_img.astype(bool)] = 1
+        
+        show_image = np.sum(obj.image, axis=0)
+        plt.imshow(show_image, cmap='turbo')
+        plt.imshow(sum_img, alpha=0.5)
+#         plt.savefig(filename[:-3])
+```
+
+# Сохранение
+
+```{python}
+pickle_name = os.path.join(output_dir, str(filename) + '.pickle')
+numpy_name = os.path.join(output_dir, str(filename) + '.npz')
+```
+
+```{python}
+if OUT:
+    # %time pickle.dump(obj, open(pickle_name, 'wb'))
+    np.savez(numpy_name, tips=tips, sources=sources)
+```
+
+# Просмтор результатов
+
+```{python}
+data_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
+
+filename = 'Т9.tif.pickle'
+```
+
+```{python}
+datapath = Path(data_dir).joinpath(filename)
+# datapath = Path(data_dir).joinpath(filename)
+datapath
+```
+
+```{python}
+loaded = pickle.load(open(datapath, 'rb'))
+# loaded = obj
+```
+
+Граф
+
+```{python}
+w = napari.view_image(loaded.image, ndisplay=3, opacity=0.5)
+loaded.graph.view_graph_as_colored_image(loaded.image.shape, viewer=w)
+```
+
+```{python}
+_ = -1
+```
+
+Клетка
+
+```{python}
+w = napari.view_image(loaded.image, ndisplay=3)
+```
+
+```{python}
+sources = w.layers[1].data
+# tips = w.layers[2].data
+```
+
+```{python}
+def get_shell_mask(mask, do_skeletonize=False, as_points=False):
+    out = ndi.binary_erosion(mask)^mask
+    if do_skeletonize:
+        out = skeletonize(out)
+    if as_points:
+        out = astro.morpho.mask2points(out)
+    return out 
+```
+
+```{python}
+domain_mask3d = ndi.binary_fill_holes(loaded.image > 0)
+domain_shell_mask = get_shell_mask(domain_mask3d)
+```
+
+```{python}
+def planewise_fill_holes(mask):
+    for k,plane in enumerate(mask):
+        mask[k] = ndi.binary_fill_holes(plane)
+    return mask
+
+    
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+
+domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)   
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
+
+
+domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
+domain_mask3d = planewise_fill_holes(domain_mask3d)
+domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
+```
+
+```{python}
+domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
+```
+
+```{python}
+w.add_image(domain_shell_mask, colormap='green', blending='additive')
+w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
+```
+
+Маски
+
+```{python}
+i = -1
+```
+
+```{python}
+w = napari.view_image(loaded.image[:i], ndisplay=3, opacity=0.5)
+w.add_image(loaded.sigma_mask[:i], blending='additive', colormap='turbo', visible=False)
+for sigma in loaded.sigmas:
+    w.add_image(loaded.masks[sigma][:i], blending='additive', name='sigma {:.2f}'.format(sigma), visible=False)
+```
+
+```{python}
+points = [tuple(map(int, p)) for p in w.layers[-1].data]
+points
+```
+
+```{python}
+points[0] = (45, 320, 193)
+```
+
+```{python}
+from skimage.morphology import flood, flood_fill, dilation, ball
+```
+
+```{python}
+image = loaded.image.copy()
+```
+
+```{python}
+smooth_stack = ndi.gaussian_filter(loaded.image, 2)
+w.add_image(smooth_stack)
+```
+
+```{python}
+tolerance = (smooth_stack.max() - smooth_stack[loaded.image>0].min())/5
+print(tolerance)
+for point in points:
+    blob_mask = flood(smooth_stack, point, tolerance=tolerance)
+    blob_mask = dilation(blob_mask, ball(4))
+    arr = flood_fill(blob_mask, (0,0,0), True)
+    blob_mask += ~arr
+    image[blob_mask] = 0
+    w.add_image(blob_mask, blending='additive')
+```
+
+```{python}
+w.add_image(image)
+```
+
+```{python}
+_ = -1
+```
+
+Векторное поле
+
+```{python}
+mask_sum = np.zeros(loaded.image.shape, bool)
+emasks = {}
+for k in range(len(loaded.sigmas)-1,-1,-1):
+    sigma = loaded.sigmas[k]
+    mask = loaded.masks[sigma]
+    if k < len(loaded.sigmas)-1:
+        mask = mask & (mask ^ mask_sum)
+    mask_sum += mask.astype(bool)
+    emasks[sigma] = mask
+```
+
+```{python}
+w = napari.view_image(loaded.image, opacity=0.5, ndisplay=3)
+#     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
+
+for sigma in list(loaded.masks.keys())[:-1]:
+    vectors = loaded.vectors[emasks[sigma]]
+#     print('Vectors shape:', vectors.shape)
+    nd, nr, nc = loaded.image.shape
+    #indexgrid = np.meshgrid(np.arange(nd), np.arange(nr), np.arange(nc), indexing='ij')
+    indexgrid = np.mgrid[:nd, :nr, :nc]
+#     print('Indexgrid shape:', indexgrid[0].shape)
+
+    z, y, x = [np.ravel(a[emasks[sigma]]) for a in indexgrid]
+    z1, y1, x1 = vectors[:,0], vectors[:,1], vectors[:,2]
+
+#     print('XYZ shapes:', x.shape, y.shape, z.shape)
+#     print('X1Y1Z1 shapes:', x1.shape, y1.shape, z1.shape)
+
+    vecs = np.zeros((vectors.shape[0], 2, 3))
+
+    vecs[..., 0, 0] = z
+    vecs[..., 0, 1] = y
+    vecs[..., 0, 2] = x
+    #
+    vecs[..., 1, 0] = z1
+    vecs[..., 1, 1] = y1
+    vecs[..., 1, 2] = x1
+    #
+    properties = {'length': loaded.sato[emasks[sigma]]}
+    w.add_vectors(vecs, edge_width=0.1,  
+                  properties=properties,
+                  edge_color='length', 
+                  edge_colormap='turbo', 
+                  name=f'σ={sigma:.2f}', visible=False)
+```
+
+```{python}
+
+```
