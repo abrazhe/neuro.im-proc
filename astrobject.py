@@ -10,6 +10,8 @@ from skimage.morphology import flood, remove_small_objects, flood_fill
 from skimage.filters import threshold_li, threshold_triangle
 
 import networkx as nx
+from astropy.io import ascii
+from astropy.table import Table
 
 import astromorpho as astro
 from astro_graph import AstroGraph as AG
@@ -548,3 +550,45 @@ class AstrObject:
                                gx_all.get_attrs_by_nodes(self.sato, lambda x: self.id2sigma[x]),
                                'sigma_opt')
         self.graph = gx_all
+
+
+
+    def swc_save(self, cell_type, filename):
+        astro = self.graph.swc()
+        lines = []
+        # credits = '# Created by Anya :))\n'
+        keys = ['# index ', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
+        soma = 1
+        radius = 0.125
+
+        #ascii version
+        data = Table()
+
+        X = []
+        Y = []
+        Z = []
+        POS = []
+        PAR = []
+
+        for r in astro:
+            for n in r.items():
+                x, y, z = n[0]
+                X.append(x)
+                Y.append(y)
+                Z.append(z)
+                pos, par = n[1]
+                POS.append(pos)
+                PAR.append(par)
+
+        ntype = np.full(len(POS), cell_type)
+        ntype[0] = 1
+
+        data['# index'] = np.array(POS)
+        data['type'] = ntype
+        data['X'] = np.array(X)
+        data['Y'] = np.array(Y)
+        data['Z'] = np.array(Z)
+        data['radius'] = radius
+        data['parent'] = np.array(PAR)
+
+        data.write(filename, format='ascii', overwrite=True)

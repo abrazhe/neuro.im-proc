@@ -80,12 +80,18 @@ class AstroGraph(nx.Graph):
 
 
     def get_branches(self):
-        # self.graph
-        raise Exception('ERROR')
+        branches = {}
+        for root in self.get_roots():
+            branches[root] = AstroGraph(self.filter_graph(lambda node: node['root'] == root))
+        return branches
 
 
     def get_branch_points(self):
         return {n for n in self.nodes if len(list(self.successors(n))) > 1}
+
+
+    def get_processors(self):
+        raise Exception('ERROR!')
 
 
     def get_attrs_by_nodes(self, arr, func=None):
