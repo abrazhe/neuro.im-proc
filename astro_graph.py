@@ -6,6 +6,23 @@ import networkx as nx
 from tqdm.auto import tqdm
 
 
+def draw_nodes(pos, nodelist):
+    return np.asarray([pos[n] for n in nodelist])
+
+
+def choose_main(chosen_keys, values, mass_func=len):
+    '''values - dict with keys contain chosen_keys and which values we should compare'''
+    max_mass = 0
+    for key in chosen_keys:
+        value = values[key]
+        value_mass = mass_func(value)
+        if value_mass > max_mass:
+            max_mass = value_mass
+            main_key = key
+            main_value = values[main_key]
+    return main_key, main_value
+
+
 class AstroGraph(nx.Graph):
 
     def __init__(self, graph):
@@ -65,11 +82,12 @@ class AstroGraph(nx.Graph):
     def successors(self, node):
         return self.graph.successors(node)
 
-    def get_tips(self):
+    @property
+    def tips(self):
         return {n for n in self.nodes if len(list(self.successors(n))) == 0}
 
-
-    def get_roots(self):
+    @property
+    def roots(self):
         return {n for n in self.nodes if len(list(self.predecessors(n))) < 1}
 
 
@@ -79,7 +97,7 @@ class AstroGraph(nx.Graph):
                   reverse=True,)
 
 
-    def get_branches(self):
+    def branches(self):
         branches = {}
         for root in self.get_roots():
             branches[root] = AstroGraph(self.filter_graph(lambda node: node['root'] == root))
@@ -135,13 +153,11 @@ class AstroGraph(nx.Graph):
 
     def get_bunches(self, min_dist=4):
         bunches = []
-        roots = self.get_roots()
+        roots = self.roots
         roots_arr = np.array(list(roots))
 
         for root in roots:
             roots_dists = np.linalg.norm(root - roots_arr, axis=-1)
-        #     for r, d in zip(roots_arr[roots_dists < min_dist], roots_dists[roots_dists < min_dist]):
-        #         print(root , r, d)
             neighbours = [tuple(r) for r in roots_arr[roots_dists < min_dist]]
             STOP=False
             for bunch in bunches:
@@ -173,6 +189,77 @@ class AstroGraph(nx.Graph):
         bunches.pop(*set2del)
 
         return bunches
+
+
+    def remove_parallels(self, min_dist=4):
+        bunches = self.get_bunches(min_dist)
+
+        for bunch in bunches:
+            main_branch_root, main_branch = choose_main(bunch, branches, lambda x: len(x.nodes()))
+            main_branch_lines = AstroGraph.make_lines(main_branch, main_branch_root)
+            main_branch_line_tip, (main_branch_line, main_branch_line_mass) = choose_main(main_branch.tips, main_branch_lines)
+            main_branch_points = draw_nodes(pos, main_branch_line)
+
+            # mr, mb = choose_main(bunch, branches, lambda x: len(x.nodes()))
+            # main_branch = Branch(mb, mr)
+
+            for branch_root in tqdm(bunch):
+                if branch_root == main_branch_root:
+                    continue
+                branch = branches[branch_root]
+                nx.set_node_attributes(data.graph, {p: main_branch_root for p in branch.nodes()}, name='root')
+
+
+                for line, line_mass in AstroGraph.make_lines(branch, branch_root).values():
+                    points = draw_nodes(pos, line)
+
+            #         branch_paths = list(branch.graph_to_paths().values())
+            #         for path in branch_paths[0]:
+            #             path = [branch_root] + path
+            #             points = draw_nodes(pos, path)
+
+                    count = min(len(points), len(main_branch_points))
+                    dists = np.linalg.norm(points[:count] - main_branch_points[:count], axis=-1)
+                    self.clear_line(points[:count], main_branch_points[:count], dists, min_dist)
+
+
+    def clear_line(self, points, main_points, dists, min_dist=4):
+        # REMOVED = False
+        for p, mbp, d in zip(points, main_points, dists):
+            point = p
+            mb_point = mbp
+
+            if tuple(p) not in data.graph:
+                continue
+            elif self.graph.nodes[tuple(p)]['sigma_mask'] == self.graph.nodes[tuple(mbp)]['sigma_mask'] \
+                or d <= min_dist:
+#                 min(data.graph.nodes[tuple(mbp)]['sigma_opt'], data.graph.nodes[tuple(p)]['sigma_opt']):
+                self.graph.remove_node(tuple(p))
+                # REMOVED = True
+            else:
+                break
+
+        else:
+            point = mb_point
+
+        # if REMOVED:
+        self.connect_points(mb_point, point)
+
+
+    def connect_points(self, start_point, end_point):
+        cur_p = start_point
+        prev_p = start_point
+        end_p = end_point
+        azi = np.array([*np.sign(end_p - cur_p)])
+
+        root = self.nodes[tuple(start_point)]['root']
+
+        while tuple(cur_p) != tuple(end_p):
+            cur_p = np.clip(cur_p + azi, np.min([start_point, end_point], axis=0), np.max([start_point, end_point], axis=0))
+            self.graph.add_node(tuple(cur_p), root=root,
+                                              sigma_mask=self.id2sigma[self.sigma_mask[cur_p[0], cur_p[1], cur_p[2]]]) #Add another parameters
+            self.graph.add_edge(tuple(prev_p), tuple(cur_p))
+            prev_p = cur_p
 
 
     #### VIZUALIZATIONS
@@ -405,3 +492,11 @@ class AstroGraph(nx.Graph):
         z = list((map(lambda x: x[2], roots)))
 
         return (np.average(x), np.average(y), np.average(z))
+
+
+    @staticmethod
+    def make_lines(branch, root):
+        lines = {}
+        for tip in branch.tips:
+            lines[tip] = nx.shortest_path(branch.graph, root, tip), nx.shortest_path_length(branch.graph, root, tip)
+        return lines
