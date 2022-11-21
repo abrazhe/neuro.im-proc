@@ -283,8 +283,25 @@ def filter_fn_(G, n):
 class AstrObject:
     def __init__(self, image, soma_mask=None, soma_shell_points=None):
         self.image = image
+
+        self.center = None
+
         self.soma_mask = soma_mask
+        self.soma_shell_mask = None
         self.soma_shell_points = soma_shell_points
+
+        self.sigmas = None
+        self.id2sigma = None
+        self.sigma2id = None
+        self.masks = None
+
+        self.sato = None
+        self.vectors = None
+
+        self.sigma_mask = None
+
+        self.full_graph = None
+
         self._graph = None
 
 
