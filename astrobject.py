@@ -479,7 +479,7 @@ class AstrObject:
         gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
         gx_all = AG(gx_all)
 
-        all_tips = gx_all.get_tips()
+        all_tips = gx_all.tips
         fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
 
         new_paths = (follow_to_root(gx_all.graph, t) for t in fine_tips)
