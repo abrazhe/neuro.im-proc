@@ -92,14 +92,14 @@ class AstroGraph(nx.Graph):
 
 
     def get_sorted_roots(self):
-        return sorted(self.get_roots(),
+        return sorted(self.roots,
                   key=lambda r: len(self.filter_graph(lambda n: n['root']==r)),
                   reverse=True,)
 
 
     def branches(self):
         branches = {}
-        for root in self.get_roots():
+        for root in self.roots:
             branches[root] = AstroGraph(self.filter_graph(lambda node: node['root'] == root))
         return branches
 
@@ -302,7 +302,7 @@ class AstroGraph(nx.Graph):
         as unbranched segments of the graph
         """
 
-        roots = self.get_roots()
+        roots = self.roots
 
         def _acc_segment(root, segm, accx):
             if segm is None:
@@ -351,7 +351,7 @@ class AstroGraph(nx.Graph):
         root_nodes = [tuple(i) for i in np.array(coords)[root_mask]]
 
         #get all tips
-        my_tips = np.array(list(self.get_tips()))
+        my_tips = np.array(list(self.tips))
 
         #filter tips
         root_tips = []
@@ -390,7 +390,7 @@ class AstroGraph(nx.Graph):
 
     def swc(self, convergence=True):
 
-        roots  = self.get_roots()
+        roots  = self.roots
         collection = []
 
         if convergence == True:
