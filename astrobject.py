@@ -8,6 +8,7 @@ from skimage import segmentation
 from skimage import feature as skf
 from skimage.morphology import flood, remove_small_objects, flood_fill
 from skimage.filters import threshold_li, threshold_triangle
+from skimage.measure import profile_line
 
 import networkx as nx
 from astropy.io import ascii
@@ -569,12 +570,24 @@ class AstrObject:
         self.graph = gx_all
 
 
+    def clear(self, part):
+        if part == 'graph':
+            del self.full_graph
+            del self.soma_shell
+            del self.soma_shell_points
+            del self.soma_shell_mask
+            del self.sigma_mask
+            del self.sato
+            del self.vectors
+
+
+
 
     def swc_save(self, cell_type, filename):
         astro = self.graph.swc()
         lines = []
         # credits = '# Created by Anya :))\n'
-        keys = ['# index ', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
+        keys = ['#index ', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
         soma = 1
         radius = 0.125
 
@@ -609,3 +622,29 @@ class AstrObject:
         data['parent'] = np.array(PAR)
 
         data.write(filename, format='ascii', overwrite=True)
+
+
+    # Analysis
+    def volume_fraction(self, plane=None, count=3, angle=np.pi/3, return_lines=True):
+        if plane is None:
+            image = np.sum(self.image, axis=0)
+        else:
+            image = self.image[i]
+
+        center = self.center[1:]
+
+        max_x = image.shape[0]
+        max_y = image.shape[1]
+
+        vecs = np.array([[np.cos(i*angle), np.sin(i*angle)] for i in range(count)])
+        lines = np.array([[np.clip([center-vecs[i]*[max_x, max_y]], [0, 0], image.shape),
+                           np.clip([center+vecs[i]*[max_x, max_y]], [0, 0], image.shape)] for i in range(count)])
+
+        profiles = [profile_line(*lines[i]) for i in range(count)]
+
+        if return_lines:
+            return lines, profiles
+        else:
+            return profiles
+
+
