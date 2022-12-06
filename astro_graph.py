@@ -154,11 +154,25 @@ class AstroGraph(nx.Graph):
     def get_bunches(self, min_dist=4):
         bunches = []
         roots = self.roots
-        roots_arr = np.array(list(roots))
+        roots_arr = np.array(sorted(list(roots)))
 
-        for root in roots:
-            roots_dists = np.linalg.norm(root - roots_arr, axis=-1)
-            neighbours = [tuple(r) for r in roots_arr[roots_dists < min_dist]]
+        rvecs = {tuple(root): np.array([*self.successors(tuple(root))]) - np.array(root) for root in roots_arr}
+        rvecs_arr = np.array([np.array([*self.successors(tuple(root))][0]) - np.array(root) for root in roots_arr]) # May be more than 1 root successor but we ignore that and choosed first
+
+        for root, rvec in rvecs.items():
+
+            def cosine_arr(vec):
+                norm_root = np.sum(rvec**2)**0.5
+                norm_vec = np.sum(vec**2)**0.5
+
+                normprod = norm_root*norm_vec
+                dprod = np.sum(rvec*vec)
+
+                return dprod/normprod
+
+            cos_dist = np.apply_along_axis(cosine_arr, 1, rvecs_arr)
+            roots_dists = np.linalg.norm(np.array(root) - roots_arr, axis=-1)
+            neighbours = [tuple(r) for r in roots_arr[(roots_dists < min_dist)*(cos_dist > 0.99)]]
             STOP=False
             for bunch in bunches:
                 for n in neighbours:
@@ -191,8 +205,27 @@ class AstroGraph(nx.Graph):
         return bunches
 
 
+    def get_sector(self, point):
+        selected_nodes = set(point)
+        to_visit = set(self.successors(point))
+        while to_visit:
+            node = to_visit.pop()
+            selected_nodes.add(node)
+            to_visit.update(set(self.successors(node)))
+        return selected_nodes
+
+    def cut_branches(self, nodes):
+        if type(nodes) is tuple:
+            nodes = [nodes]
+        for node in nodes:
+            sector_nodes = self.get_sector(node)
+            self.graph.remove_nodes_from(sector_nodes)
+
+
     def remove_parallels(self, min_dist=4):
         bunches = self.get_bunches(min_dist)
+        branches = self.branches()
+        pos = {node: node for node in self.nodes}
 
         for bunch in bunches:
             main_branch_root, main_branch = choose_main(bunch, branches, lambda x: len(x.nodes()))
@@ -207,7 +240,7 @@ class AstroGraph(nx.Graph):
                 if branch_root == main_branch_root:
                     continue
                 branch = branches[branch_root]
-                nx.set_node_attributes(data.graph, {p: main_branch_root for p in branch.nodes()}, name='root')
+                nx.set_node_attributes(self.graph, {p: main_branch_root for p in branch.nodes()}, name='root')
 
 
                 for line, line_mass in AstroGraph.make_lines(branch, branch_root).values():
@@ -221,6 +254,7 @@ class AstroGraph(nx.Graph):
                     count = min(len(points), len(main_branch_points))
                     dists = np.linalg.norm(points[:count] - main_branch_points[:count], axis=-1)
                     self.clear_line(points[:count], main_branch_points[:count], dists, min_dist)
+        self.check_roots()
 
 
     def clear_line(self, points, main_points, dists, min_dist=4):
@@ -229,7 +263,7 @@ class AstroGraph(nx.Graph):
             point = p
             mb_point = mbp
 
-            if tuple(p) not in data.graph:
+            if tuple(p) not in self.graph:
                 continue
             elif self.graph.nodes[tuple(p)]['sigma_mask'] == self.graph.nodes[tuple(mbp)]['sigma_mask'] \
                 or d <= min_dist:
@@ -243,6 +277,7 @@ class AstroGraph(nx.Graph):
             point = mb_point
 
         # if REMOVED:
+        print('start_point: {}, end_point: {}'.format(mb_point, point))
         self.connect_points(mb_point, point)
 
 
@@ -256,8 +291,11 @@ class AstroGraph(nx.Graph):
 
         while tuple(cur_p) != tuple(end_p):
             cur_p = np.clip(cur_p + azi, np.min([start_point, end_point], axis=0), np.max([start_point, end_point], axis=0))
-            self.graph.add_node(tuple(cur_p), root=root,
-                                              sigma_mask=self.id2sigma[self.sigma_mask[cur_p[0], cur_p[1], cur_p[2]]]) #Add another parameters
+
+            self.graph.add_node(tuple(cur_p), root=root) #Add another parameters
+            print('prev_p: {}, cur_p: {}'.format(prev_p, cur_p))
+            if tuple(cur_p) == tuple(prev_p):
+                break
             self.graph.add_edge(tuple(prev_p), tuple(cur_p))
             prev_p = cur_p
 
@@ -339,29 +377,44 @@ class AstroGraph(nx.Graph):
         return str(self.graph)
 
 
+    def check_roots(self):
+        for root in self.roots:
+            try:
+                nodes = self.get_sector(root)
+            except:
+                continue
+            for node in nodes:
+                nx.set_node_attributes(self.graph, root, 'root')
+
+
     def related_tips(self, root):
 
-        # collect tree nodes
-        coords = [i[0] for i in self.graph.nodes.data()]
-        all_roots = [i[1]["root"] for i in self.graph.nodes.data()]
+        # # collect tree nodes
+        # coords = [i[0] for i in self.graph.nodes.data()]
+        # all_roots = [i[1]["root"] for i in self.graph.nodes.data()]
 
-        #create root-specialized mask
-        x, y, z = root
-        root_mask = (np.array(all_roots)[:,0]==x) & (np.array(all_roots)[:,1]==y) & (np.array(all_roots)[:,2]==z)
-        root_nodes = [tuple(i) for i in np.array(coords)[root_mask]]
+        # #create root-specialized mask
+        # x, y, z = root
+        # root_mask = (np.array(all_roots)[:,0]==x) & (np.array(all_roots)[:,1]==y) & (np.array(all_roots)[:,2]==z)
+        # root_nodes = [tuple(i) for i in np.array(coords)[root_mask]]
 
-        #get all tips
-        my_tips = np.array(list(self.tips))
+        # #get all tips
+        # my_tips = np.array(list(self.tips))
 
-        #filter tips
-        root_tips = []
+        # #filter tips
+        # root_tips = []
 
-        for tip in my_tips:
-            tip = tuple(tip)
+        # for tip in my_tips:
+        #     tip = tuple(tip)
 
-            if tip in root_nodes:
-                root_tips.append(tip)
+        #     if tip in root_nodes:
+        #         root_tips.append(tip)
 
+        # return root_tips
+
+        root_nodes = self.get_sector(root)
+        tips = self.tips
+        root_tips = [tip for tip in tips if tip in root_nodes]
         return root_tips
 
 
@@ -388,15 +441,17 @@ class AstroGraph(nx.Graph):
 
         return root_path
 
-    def swc(self, convergence=True):
+    def swc(self, center=None, convergence=True):
 
         roots  = self.roots
         collection = []
 
-        if convergence == True:
+        if convergence == True or center is None:
             #connect all roots for continuous structure
             convergence = {AstroGraph.roots_convergence(roots): (1, -1)}
             collection.append(convergence)
+        else:
+            collection.append({center:(1, -1)})
 
 
         for r in tqdm(roots):

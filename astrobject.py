@@ -282,8 +282,9 @@ def filter_fn_(G, n):
 
 
 class AstrObject:
-    def __init__(self, image, soma_mask=None, soma_shell_points=None):
+    def __init__(self, image, soma_mask=None, soma_shell_points=None, ratio=(1, 1, 1)):
         self.image = image
+        self.ratio = ratio
 
         self.center = None
 
@@ -583,8 +584,8 @@ class AstrObject:
 
 
 
-    def swc_save(self, cell_type, filename):
-        astro = self.graph.swc()
+    def swc_save(self, cell_type, filename, ratio=None):
+        astro = self.graph.swc(center=obj.center)
         lines = []
         # credits = '# Created by Anya :))\n'
         keys = ['#index ', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
@@ -593,6 +594,7 @@ class AstrObject:
 
         #ascii version
         data = Table()
+        ratio = ratio if ratio else self.ratio
 
         X = []
         Y = []
@@ -615,9 +617,9 @@ class AstrObject:
 
         data['# index'] = np.array(POS)
         data['type'] = ntype
-        data['X'] = np.array(X)
-        data['Y'] = np.array(Y)
-        data['Z'] = np.array(Z)
+        data['X'] = np.array(X) * ratio[2]
+        data['Y'] = np.array(Y) * ratio[1]
+        data['Z'] = np.array(Z) * ratio[0]
         data['radius'] = radius
         data['parent'] = np.array(PAR)
 
@@ -633,12 +635,13 @@ class AstrObject:
 
         center = self.center[1:]
 
-        max_x = image.shape[0]
-        max_y = image.shape[1]
+        # max_x = image.shape[0]
+        # max_y = image.shape[1]
+        max_shape = np.max(*image.shape)
 
         vecs = np.array([[np.cos(i*angle), np.sin(i*angle)] for i in range(count)])
-        lines = np.array([[np.clip([center-vecs[i]*[max_x, max_y]], [0, 0], image.shape),
-                           np.clip([center+vecs[i]*[max_x, max_y]], [0, 0], image.shape)] for i in range(count)])
+        lines = np.array([[np.clip([center-vecs[i]*max_shape], [0, 0], image.shape),
+                           np.clip([center+vecs[i]*max_shape], [0, 0], image.shape)] for i in range(count)])
 
         profiles = [profile_line(*lines[i]) for i in range(count)]
 
@@ -648,3 +651,4 @@ class AstrObject:
             return profiles
 
 
+# sigma_mask=self.id2sigma[self.sigma_mask[cur_p[0], cur_p[1], cur_p[2]]] Add parameters after removing parallels
