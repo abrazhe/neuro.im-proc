@@ -516,7 +516,7 @@ class AstrObject:
         return gx_all
 
 
-    def astro_graph_creation(self, min_path_length=25, loneliness=10):
+    def astro_graph_creation(self, min_path_length=25, loneliness=10, inplace=True):
         print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
         # for k, v in seq_paths.items():
@@ -531,9 +531,13 @@ class AstrObject:
 
             gx_all_occ = AG(nx.DiGraph(gx_all_occ.subgraph(good_nodes)))
 
-        self.graph = gx_all_occ
+        if inplace:
+            self.graph = gx_all_occ
+        else:
+            return gx_all_occ
 
-    def tips_graph_creation(self, tips, sources=None, min_path_length=1, proximity=3):
+
+    def tips_graph_creation(self, tips, sources=None, min_path_length=1, proximity=3, inplace=True):
         if type(tips) is tuple:
             tips = [tips]
 
@@ -568,7 +572,11 @@ class AstrObject:
         nx.set_node_attributes(gx_all,
                                gx_all.get_attrs_by_nodes(self.sato, lambda x: self.id2sigma[x]),
                                'sigma_opt')
-        self.graph = gx_all
+
+        if inplace:
+            self.graph = gx_all
+        else:
+            return gx_all
 
 
     def clear(self, part):
@@ -582,13 +590,11 @@ class AstrObject:
             del self.vectors
 
 
-
-
     def swc_save(self, cell_type, filename, ratio=None):
-        astro = self.graph.swc(center=obj.center)
+        astro = self.graph.swc(center=self.center)
         lines = []
         # credits = '# Created by Anya :))\n'
-        keys = ['#index ', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
+        keys = ['#index', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
         soma = 1
         radius = 0.125
 
