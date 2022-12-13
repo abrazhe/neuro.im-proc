@@ -13,6 +13,48 @@ jupyter:
     name: venv
 ---
 
+*2yCR1
+
+*2yCR2
+
+*2yCR3
+
+2yCR4*
+
+*2yCR5
+
+*2yHFD1
+
+2yHFD3*
+
+*2yHFD4
+
+2yHFD5*
+
+*2yHFD9
+
+*9mCR1
+
+9mCR4-
+
+9mCR5
+
+*9mCR6
+
+*9mCR8
+
+*9mHFD3
+
+*9mHFD4
+
+*9mHFD5
+
+*9mHFD6
+
+*9mHFD7
+
+9mHFD8
+
 ```{python}
 import os
 import sys
@@ -22,6 +64,7 @@ import itertools as itt
 from pathlib import Path
 import czifile as czi
 import tifffile as tiff
+import aicsimageio as aicsi
 
 # Image preprocessing
 import cv2
@@ -35,6 +78,7 @@ import numpy as np
 
 # Analysis
 import astrobject as ao
+import astro_graph as ag
 import ccdb
 import astromorpho as astro
 import ucats
@@ -69,23 +113,25 @@ cmap1 = LinearSegmentedColormap.from_list("mycmap", colors)
 
 ```{python tags=c("parameters")}
 if os.path.exists('/home/levtg/astro-morpho'):
-    data_dir = '/home/levtg/astro-morpho/data/human_glauk/'
+#     data_dir = '/home/levtg/astro-morpho/data/human_glauk/'
+    data_dir = '/home/levtg/astro-morpho/data/aging_diet'
+
 else:
     print("Dont know where to look for the data")
 
-output_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
+output_dir = '/home/levtg/astro-morpho/data/aging_diet/output/'
 
-filename = 'T1.tif'
+filename = '9mCR6.tif'
 
 use_clahe = True
-sigmas = 2**np.arange(-5, 3, 0.5)
+sigmas = 2**np.arange(-1, 3, 0.5)
 alpha = 0.5 # relative weight of coside distance between Hessian vector and linkage vector
 beta = 0.0  # weight of Euclidean distance between the nodes 
 offset=1
 
 VERBOSE = True
 
-USE_NAPARI = True
+USE_NAPARI = False
 
 
 # Set false to start from console
@@ -104,9 +150,13 @@ if HANDY:
 ```
 
 ```{python}
-datapath = Path(data_dir).joinpath(filename)
-# datapath = Path(data_dir).joinpath(filename)
-datapath
+basename = os.path.basename(filename)[:-4]
+```
+
+```{python}
+datapath = Path(data_dir).joinpath(basename + '.tif')
+datapath_czi = Path('/home/levtg/astro-morpho/data/aging_diet/czi/' + basename + '.czi')
+datapath, datapath_czi
 ```
 
 ```{python}
@@ -120,6 +170,12 @@ datapath
 # #     czi.czi2tif(datapath, tiffile=tifname)
 # #     stack = tiff.imread(tifname)[2]
 # stack.shape
+```
+
+```{python}
+img = aicsi.AICSImage(datapath_czi)
+ratio = (img.physical_pixel_sizes.X, img.physical_pixel_sizes.Y, img.physical_pixel_sizes.Z)
+ratio
 ```
 
 ```{python}
@@ -171,7 +227,7 @@ masks3a = ucats.masks.largest_region(masks3a)
 ```
 
 ```{python}
-use_kink = True
+use_kink = False
 ```
 
 ```{python}
@@ -239,43 +295,81 @@ if VERBOSE:
 ## Очистка изображения
 
 ```{python}
-sigma = 6
+# sigma = 6
 ```
 
 ```{python}
-def get_blobs(image, sigma):
-    frangi, blobness = astro.morpho.frangi(image, sigma, beta=0.5, return_blobness=True)
-    blobness2 = astro.enh.percentile_rescale(ndi.gaussian_filter(blobness, sigma), 0.1, 99.99)**2
-    frangi_weights = astro.enh.percentile_rescale(frangi, 0.1, 99.9)
-    mx = ucats.masks.threshold_object_size((frangi_weights > 0.5)*(blobness2 < 0.1), 27)
-    saved_blobs = ucats.masks.select_overlapping(blobness2 > 0.1, ndi.binary_dilation(mx))
-    return saved_blobs
+# def get_blobs(image, sigma):
+#     frangi, blobness = astro.morpho.frangi(image, sigma, beta=0.5, return_blobness=True)
+#     blobness2 = astro.enh.percentile_rescale(ndi.gaussian_filter(blobness, sigma), 0.1, 99.99)**2
+#     frangi_weights = astro.enh.percentile_rescale(frangi, 0.1, 99.9)
+#     mx = ucats.masks.threshold_object_size((frangi_weights > 0.5)*(blobness2 < 0.1), 27)
+#     saved_blobs = ucats.masks.select_overlapping(blobness2 > 0.1, ndi.binary_dilation(mx))
+#     return saved_blobs
 ```
 
 ```{python}
-sigmas_clear = np.linspace(4, 10, 13)
+# sigmas_clear = np.linspace(4, 10, 13)
 ```
 
 ```{python}
-sigmas_clear
+# sigmas_clear
 ```
 
 ```{python}
-w = napari.view_image(clean_img, ndisplay=3, visible=True, colormap='magenta')
+# w = napari.view_image(clean_img, ndisplay=3, visible=True, colormap='magenta')
 
-for sigma in tqdm(sigmas_clear):
-    blobs = get_blobs(clean_img, (sigma/2, sigma, sigma))
-    w.add_image(blobs, colormap='cyan',blending='additive',visible=True)    
+# for sigma in tqdm(sigmas_clear):
+#     blobs = get_blobs(clean_img, (sigma/2, sigma, sigma))
+#     w.add_image(blobs, colormap='cyan',blending='additive',visible=True)    
 
 ```
 
-# Анализ
+# Сегментация. Построение графа
 
 ```{python}
-obj = ao.AstrObject(clean_img)
+obj = ao.AstrObject(clean_img, ratio=ratio)
 print('Center')
 obj.center_detection()
 obj.center
+```
+
+```{python}
+# obj.center = (44, 231, 230) # 2yCR1
+# obj.center = (27, 271, 235) # 2yCR3
+# obj.center = (32, 257, 252) # 2yCR4
+# obj.center = (50, 258, 235) # 2yHFD4
+
+# obj.center = (36, 276, 225) # 2yHFD9
+# obj.center = (24, 297, 226) # 9mCR6
+# obj.center = (36, 266, 259) # 9mCR8
+# obj.center = (34, 300, 234) # 9mHFD3
+# obj.center = (35, 271, 251) # 9mHFD4
+# obj.center = (39, 283, 271) # 9mHFD5
+# obj.center = (33, 263, 257) # 9mHFD6
+# obj.center = (35, 271, 252) # 9mHFD7
+# obj.center = (37, 288, 252) # 9mHFD8
+
+
+centers = {
+    '2yCR1': (44, 231, 230),
+    '2yCR3': (27, 271, 235),
+    '2yCR4': (32, 257, 252),
+    '2yHFD4': (50, 258, 235),
+    '2yHFD9': (36, 276, 225),
+    '9mCR6': (24, 297, 226),
+    '9mCR8': (36, 266, 259),
+    '9mHFD3': (34, 300, 234),
+    '9mHFD4': (35, 271, 251),
+    '9mHFD5': (39, 283, 271),
+    '9mHFD6': (33, 263, 257),
+    '9mHFD7': (35, 271, 252),
+    '9mHFD8': (37, 288, 252)
+}
+
+if basename in centers.keys():
+    obj.center = centers[basename]
+
 ```
 
 ```{python}
@@ -368,10 +462,6 @@ def initiate_point_picker(image, soma_shell=None):
 ```
 
 ```{python}
-point_picker = initiate_point_picker(obj.image, obj.soma_shell_mask)
-```
-
-```{python}
 if LOAD:
     points = np.load(numpy_name)
     tips = [tuple(map(int, p)) for p in points['tips']]
@@ -379,29 +469,28 @@ if LOAD:
 ```
 
 ```{python}
-point_picker.add_image(obj.sigma_mask)
+# point_picker = initiate_point_picker(obj.image, obj.soma_shell_mask)
+# point_picker.add_image(obj.sigma_mask)
 ```
 
 ```{python}
-tips = [tuple(map(int, p)) for p in point_picker.layers[2].data]
-sources = [tuple(map(int, p)) for p in point_picker.layers[3].data]
+# tips = [tuple(map(int, p)) for p in point_picker.layers[2].data]
+# sources = [tuple(map(int, p)) for p in point_picker.layers[3].data]
 ```
 
 ```{python}
-print('Targets Graph')
-# %time obj.tips_graph_creation(tips=tips, sources=sources)
+# print('Targets Graph')
+# # %time obj.tips_graph_creation(tips=tips, sources=sources)
+# obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=point_picker)
 ```
 
 ```{python}
-obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=point_picker)
+# obj.full_graph.nodes
 ```
 
 ```{python}
-_ = -1
-```
-
-```{python}
-point_picker.add_image(obj.sigma_mask)
+print('Graph')
+# %time obj.astro_graph_creation(loneliness=5)
 ```
 
 ```{python}
@@ -409,6 +498,9 @@ if VERBOSE:
     if USE_NAPARI:
         w = napari.view_image(obj.image, ndisplay=3, opacity=0.5)
         obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=w)
+        for sigma in obj.sigmas:
+            w.add_image(obj.masks[sigma], blending='additive', name='sigma {:.2f}'.format(sigma), visible=False)
+        w.add_image(obj.sigma_mask, blending='additive', colormap='turbo', visible=False)
     else:
         test_image = np.zeros(img.shape)
         points = np.array(list(obj.graph.nodes))
@@ -423,36 +515,420 @@ if VERBOSE:
 #         plt.savefig(filename[:-3])
 ```
 
-# Сохранение
+```{python}
+_ = -1
+```
+
+# Постобработка
+
+
+## Обрезка ветвей
 
 ```{python}
-pickle_name = os.path.join(output_dir, str(filename) + '.pickle')
-numpy_name = os.path.join(output_dir, str(filename) + '.npz')
+pruning = napari.view_image(obj.image, ndisplay=3, opacity=0.5)
+obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=pruning)
+cut_layer = pruning.add_points(edge_color='red', face_color='red', symbol='+', size=1, name='cuts', ndim=3)
 ```
 
 ```{python}
-if OUT:
-    # %time pickle.dump(obj, open(pickle_name, 'wb'))
-    np.savez(numpy_name, tips=tips, sources=sources)
+points2del = list(map(lambda x: tuple(map(lambda y: int(np.round(y)), x)), cut_layer.data))
+obj.graph.cut_branches(points2del)
+```
+
+```{python}
+w = napari.view_image(obj.image, ndisplay=3, opacity=0.5)
+obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=w)
+```
+
+## Удаление параллельных участков
+
+```{python}
+import networkx as nx
+import astro_graph as ag
+```
+
+```{python}
+def draw_nodes(pos, nodelist):
+    return np.asarray([pos[n] for n in nodelist])
+def choose_main(chosen_keys, values, mass_func=len):
+    '''values - dict with keys contain chosen_keys and which values we should compare'''
+    max_mass = 0
+    main_key = None
+    main_value = None
+    for key in chosen_keys:
+        value = values[key]
+        if main_key is None or main_value is None:
+            main_key, main_value = key, value
+        value_mass = mass_func(value)
+        if value_mass > max_mass:
+            max_mass = value_mass
+            main_key = key
+            main_value = values[main_key]
+    return main_key, main_value
+```
+
+```{python}
+def remove_parallels(self, min_dist=4):
+    bunches = self.get_bunches(min_dist)
+    branches = self.branches
+    pos = {node: node for node in self.nodes}
+
+    for bunch in bunches:
+        main_branch_root, main_branch = choose_main(bunch, branches, lambda x: len(x.nodes()))
+        main_branch_lines = ag.AstroGraph.make_lines(main_branch, main_branch_root)
+        if len(main_branch.tips) < 1:
+            continue
+        main_branch_line_tip, (main_branch_line, main_branch_line_mass) = choose_main(main_branch.tips, main_branch_lines)
+        main_branch_points = draw_nodes(pos, main_branch_line)
+
+        # mr, mb = choose_main(bunch, branches, lambda x: len(x.nodes()))
+        # main_branch = Branch(mb, mr)
+
+        for branch_root in tqdm(bunch):
+            # Can be switch off if need to remove parallels from branch itself (NOT WORKING FOR NOW)
+            if branch_root == main_branch_root:
+                continue
+            branch = branches[branch_root]
+            nx.set_node_attributes(self.graph, {p: main_branch_root for p in branch.nodes()}, name='root')
+
+
+            for line, line_mass in ag.AstroGraph.make_lines(branch, branch_root).values():
+                points = draw_nodes(pos, line)
+
+        #         branch_paths = list(branch.graph_to_paths().values())
+        #         for path in branch_paths[0]:
+        #             path = [branch_root] + path
+        #             points = draw_nodes(pos, path)
+
+                count = min(len(points), len(main_branch_points))
+                dists = np.linalg.norm(points[:count] - main_branch_points[:count], axis=-1)
+                clear_line(self, points[:count], main_branch_points[:count], dists, min_dist)
+    self.check_roots()
+
+
+def clear_line(self, points, main_points, dists, min_dist=4):
+    # REMOVED = False
+    for p, mbp, d in zip(points, main_points, dists):
+        point = p
+        mb_point = mbp
+
+        if tuple(p) not in self.graph or tuple(p) == tuple(mbp):
+            continue
+        elif self.graph.nodes[tuple(p)]['sigma_mask'] == self.graph.nodes[tuple(mbp)]['sigma_mask'] \
+            or d <= min_dist:
+#                 min(data.graph.nodes[tuple(mbp)]['sigma_opt'], data.graph.nodes[tuple(p)]['sigma_opt']):
+            self.graph.remove_node(tuple(p))
+#             print('DELETED: {}'.format(point))    
+        else:
+            break
+
+    else:
+        point = mb_point
+
+    print('start_point: {}, end_point: {}'.format(mb_point, point))
+    connect_points(self, mb_point, point)
+
+
+def connect_points(self, start_point, end_point):
+    cur_p = start_point
+    prev_p = start_point
+    end_p = end_point
+    azi = np.array([*np.sign(end_p - cur_p)])
+
+    root = self.nodes[tuple(start_point)]['root']
+
+    while tuple(cur_p) != tuple(end_p):
+        cur_p = np.clip(cur_p + azi, np.min([start_point, end_point], axis=0), np.max([start_point, end_point], axis=0))
+        print('prev_p: {}, cur_p: {}'.format(prev_p, cur_p))
+        if self.graph.has_edge(tuple(prev_p), tuple(cur_p)) or self.graph.has_edge(tuple(cur_p), tuple(prev_p)):
+            prev_p = cur_p
+            continue
+        self.graph.add_node(tuple(cur_p), root=root) #Add another parameters        
+        self.graph.add_edge(tuple(prev_p), tuple(cur_p))
+        prev_p = cur_p
+```
+
+```{python}
+# print('Graph')
+# # %time obj.astro_graph_creation(loneliness=5)
+```
+
+```{python}
+remove_parallels(loaded.graph, min_dist=3)
+# roots = obj.graph.roots
+# for root in roots:
+#     print(list(obj.graph.successors(root)))
+```
+
+```{python}
+_ = -1
+```
+
+```{python}
+if HANDY:
+    # min_dist=4
+    start_points = np.array([[24, 278, 219], [25, 272, 217], [24, 291, 190]])
+    end_points = np.array([[25, 278, 228], [21, 273, 220], [24, 291, 190]])
+
+    # min_dist=3
+    # start_points = np.array([[21, 287, 224], [24, 296, 236]])
+    # end_points = np.array([[21, 289, 218], [21, 290, 218], [24, 304, 236]])
+```
+
+```{python}
+obj.graph.check_for_cycles(verbose=True)
+```
+
+```{python}
+if HANDY:
+    for node in start_points:
+        print(obj.graph.graph.in_edges(tuple(node)))
+        print(obj.graph.graph.out_edges(tuple(node)))
+```
+
+```{python}
+# for node in end_points:
+#     print(obj.graph.graph.in_edges(tuple(node)))
+#     print(obj.graph.graph.out_edges(tuple(node)))
+```
+
+```{python}
+if HANDY:
+    import itertools as itt
+
+    def draw_nodes(pos, nodelist):
+        return np.asarray([pos[n] for n in nodelist])
+
+    bunches = obj.graph.get_bunches(min_dist=3.5)
+    branches = {}
+    for root in obj.graph.roots:
+        branches[root] = ag.AstroGraph(obj.graph.filter_graph(lambda node: node['root'] == root))
+    data = obj
+
+    w = napari.view_image(data.image, opacity=0.5)
+    pos = {node: node for node in data.graph.nodes}
+    colors = ['blue', 'red', 'yellow', 'cyan', 'green', 'magenta', 'bop orange']
+
+
+    for bunch, color in zip(bunches, itt.cycle(colors)):
+        img = np.zeros(data.image.shape)
+        for root in bunch:
+            points = draw_nodes(pos, branches[root].nodes())
+            img[points[:, 0], points[:, 1], points[:, 2]] = 1
+        w.add_image(img, colormap=color, blending='additive')
+```
+
+```{python}
+def check_roots(self):
+    for root in self.roots:
+        print(root)
+        print(root in self.graph)
+        try:
+            nodes = self.get_sector(root)
+        except:
+            continue
+        for node in nodes:
+            nx.set_node_attributes(self.graph, root, 'root')
+```
+
+```{python}
+w = napari.view_image(obj.image, opacity=0.5, ndisplay=3)
+obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=w)
+```
+
+```{python}
+# w.add_image(obj.sigma_mask)
+```
+
+```{python}
+# w.add_points(start_points, edge_color='transparent', face_color='green', size=2)
+# w.add_points(end_points, edge_color='transparent', face_color='red', size=2)
+```
+
+```{python}
+import astro_graph as ag
+```
+
+```{python}
+# pos_ = {node: node for node in obj.graph.nodes}
+
+# img = np.zeros(obj.image.shape)
+
+# points = ag.draw_nodes(pos_, obj.graph.nodes())
+
+# img[points[:, 0], points[:, 1], points[:, 2]] = 1
+# w.add_image(img, colormap='gray', blending='additive', name='main branch')
+```
+
+```{python}
+# w = napari.view_image(obj.image, ndisplay=3, opacity=0.5)
+# obj.graph.view_graph_as_colored_image(obj.image.shape, viewer=w)
+```
+
+# Сохранение
+
+```{python}
+name = str(filename).split('.')[0]
+pickle_name = os.path.join(output_dir, name + '_ratio.pickle')
+swc_name = os.path.join(output_dir, name + '_ratio' + '.swc')
+
+# numpy_name = os.path.join(output_dir, name + '.npz')
+
+# if OUT:
+# %time pickle.dump(obj, open(pickle_name, 'wb'))
+obj.swc_save(7, swc_name, ratio=ratio)
+#     np.savez(numpy_name, tips=tips, sources=sources)
+```
+
+```{python}
+_ = -1
+```
+
+# Обработка результатов
+
+```{python}
+# w = napari.view_image(show_image)
+```
+
+```{python}
+from skimage.measure import profile_line
+```
+
+```{python}
+# fig, axs = plt.subplots((1,3))
+# for i, ax in enumerate(axs.ravel()):
+#     ax.plot(profile_line(show_image, *w.layers[1].data[i]))
+```
+
+## Подсчёт длин отростков
+
+
+### От корня к концу
+
+```{python}
+# import pandas as pd
+# import glob
+# import networkx as nx
+```
+
+```{python}
+# def make_lines(branch, root):
+#     lines = {}
+#     for tip in branch.get_tips():
+#         lines[tip] = nx.shortest_path(branch.graph, root, tip), nx.shortest_path_length(branch.graph, root, tip)
+#     return lines
+```
+
+```{python}
+# def get_branches(self):
+#     branches = {}
+#     for root in self.get_roots():
+#         branches[root] = ag.AstroGraph(self.filter_graph(lambda node: node['root'] == root))
+#     return branches
+```
+
+```{python}
+# def get_length(path):
+#     length = 0
+#     for i, p in enumerate(path[:-1]):
+#         length += np.linalg.norm(np.array(p)-np.array(path[i+1]))
+#     return length
+        
+```
+
+```{python}
+# data_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
+```
+
+```{python}
+# data_ = pd.DataFrame(columns=['cell', 'count', 'lengths'])
+```
+
+```{python}
+
+```
+
+```{python}
+# for i, path in enumerate(tqdm(glob.glob(data_dir + "*.pickle"))):
+#     name = path.split('/')[-1].split('.')[0]
+    
+#     cell = pickle.load(open(path, 'rb'))
+    
+#     n_tips = len(cell.graph.get_tips())
+    
+#     processors = {}
+#     for root, branch in get_branches(cell.graph).items():
+#         processors.update(make_lines(branch, root))
+#     lengths = [get_length(p) for p, l in list(processors.values())]
+    
+# #     lengths = [l for p, l in list(processors.values())]
+    
+#     data_.loc[i] = [name, n_tips, lengths]
+```
+
+```{python}
+# data_
+```
+
+```{python}
+# data_.set_index('cell').sort_index()
+```
+
+```{python}
+# data_.to_csv('/home/levtg/astro-morpho/data/human_glauk/output/processors_lengths.csv')
 ```
 
 # Просмтор результатов
 
 ```{python}
-data_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
-
-filename = 'Т9.tif.pickle'
+# data_dir = '/home/levtg/astro-morpho/data/human_glauk/output/'
+# filename = 'T5_.tif.pickle'
 ```
 
 ```{python}
-datapath = Path(data_dir).joinpath(filename)
-# datapath = Path(data_dir).joinpath(filename)
+if os.path.exists('/home/levtg/astro-morpho'):
+#     data_dir = '/home/levtg/astro-morpho/data/human_glauk/'
+    data_dir = '/home/levtg/astro-morpho/data/aging_diet/output'
+
+else:
+    print("Dont know where to look for the data")
+
+output_dir = '/home/levtg/astro-morpho/data/aging_diet/output/'
+
+filename = '9mHFD7.tif'
+
+use_clahe = True
+sigmas = 2**np.arange(-1, 3, 0.5)
+alpha = 0.5 # relative weight of coside distance between Hessian vector and linkage vector
+beta = 0.0  # weight of Euclidean distance between the nodes 
+offset=1
+
+VERBOSE = True
+
+USE_NAPARI = False
+
+
+# Set false to start from console
+HANDY = True
+
+# Set true to save output
+OUT = True
+LOAD = False
+```
+
+```{python}
+basename = os.path.basename(filename)[:-4]
+```
+
+```{python}
+datapath = Path(data_dir).joinpath(basename + '_ratio.pickle')
+# # datapath = Path(data_dir).joinpath(filename)
 datapath
 ```
 
 ```{python}
 loaded = pickle.load(open(datapath, 'rb'))
-# loaded = obj
+# # loaded = obj
 ```
 
 Граф
@@ -466,163 +942,195 @@ loaded.graph.view_graph_as_colored_image(loaded.image.shape, viewer=w)
 _ = -1
 ```
 
-Клетка
-
 ```{python}
-w = napari.view_image(loaded.image, ndisplay=3)
+pruning = napari.view_image(loaded.image, ndisplay=3, opacity=0.5)
+loaded.graph.view_graph_as_colored_image(loaded.image.shape, viewer=pruning)
+cut_layer = pruning.add_points(edge_color='red', face_color='red', symbol='+', size=1, name='cuts', ndim=3)
 ```
 
 ```{python}
-sources = w.layers[1].data
+points2del = list(map(lambda x: tuple(map(lambda y: int(np.round(y)), x)), cut_layer.data))
+loaded.graph.cut_branches(points2del)
+```
+
+```{python}
+name = str(filename).split('.')[0]
+pickle_name = os.path.join(output_dir, name + '_ratio.pickle')
+swc_name = os.path.join(output_dir, name + '_ratio' + '.swc')
+
+# numpy_name = os.path.join(output_dir, name + '.npz')
+
+# if OUT:
+# %time pickle.dump(loaded, open(pickle_name, 'wb'))
+loaded.swc_save(7, swc_name, ratio=loaded.ratio)
+#     np.savez(numpy_name, tips=tips, sources=sources)
+```
+
+```{python}
+loaded.graph.remove_parallels()
+```
+
+```{python}
+
+```
+
+Клетка
+
+```{python}
+# w = napari.view_image(loaded.image, ndisplay=3)
+```
+
+```{python}
+# sources = w.layers[1].data
 # tips = w.layers[2].data
 ```
 
 ```{python}
-def get_shell_mask(mask, do_skeletonize=False, as_points=False):
-    out = ndi.binary_erosion(mask)^mask
-    if do_skeletonize:
-        out = skeletonize(out)
-    if as_points:
-        out = astro.morpho.mask2points(out)
-    return out 
+# def get_shell_mask(mask, do_skeletonize=False, as_points=False):
+#     out = ndi.binary_erosion(mask)^mask
+#     if do_skeletonize:
+#         out = skeletonize(out)
+#     if as_points:
+#         out = astro.morpho.mask2points(out)
+#     return out 
 ```
 
 ```{python}
-domain_mask3d = ndi.binary_fill_holes(loaded.image > 0)
-domain_shell_mask = get_shell_mask(domain_mask3d)
+# domain_mask3d = ndi.binary_fill_holes(loaded.image > 0)
+# domain_shell_mask = get_shell_mask(domain_mask3d)
 ```
 
 ```{python}
-def planewise_fill_holes(mask):
-    for k,plane in enumerate(mask):
-        mask[k] = ndi.binary_fill_holes(plane)
-    return mask
+# def planewise_fill_holes(mask):
+#     for k,plane in enumerate(mask):
+#         mask[k] = ndi.binary_fill_holes(plane)
+#     return mask
 
     
-domain_mask3d = planewise_fill_holes(domain_mask3d)
+# domain_mask3d = planewise_fill_holes(domain_mask3d)
 
-domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)   
-domain_mask3d = planewise_fill_holes(domain_mask3d)
-domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
+# domain_mask3d = np.moveaxis(domain_mask3d, 1, 0)   
+# domain_mask3d = planewise_fill_holes(domain_mask3d)
+# domain_mask3d = np.moveaxis(domain_mask3d, 0, 1)
 
 
-domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
-domain_mask3d = planewise_fill_holes(domain_mask3d)
-domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
+# domain_mask3d = np.moveaxis(domain_mask3d, 2, 0)
+# domain_mask3d = planewise_fill_holes(domain_mask3d)
+# domain_mask3d = np.moveaxis(domain_mask3d, 0, 2)
 ```
 
 ```{python}
-domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
+# domain_outer_shell_mask = get_shell_mask(domain_mask3d) & domain_shell_mask
 ```
 
 ```{python}
-w.add_image(domain_shell_mask, colormap='green', blending='additive')
-w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
+# w.add_image(domain_shell_mask, colormap='green', blending='additive')
+# w.add_image(domain_outer_shell_mask, colormap='red', blending='additive')
 ```
 
 Маски
 
 ```{python}
-i = -1
+# i = -1
 ```
 
 ```{python}
-w = napari.view_image(loaded.image[:i], ndisplay=3, opacity=0.5)
-w.add_image(loaded.sigma_mask[:i], blending='additive', colormap='turbo', visible=False)
-for sigma in loaded.sigmas:
-    w.add_image(loaded.masks[sigma][:i], blending='additive', name='sigma {:.2f}'.format(sigma), visible=False)
+# w = napari.view_image(loaded.image[:i], ndisplay=3, opacity=0.5)
+# w.add_image(loaded.sigma_mask[:i], blending='additive', colormap='turbo', visible=False)
+# for sigma in loaded.sigmas:
+#     w.add_image(loaded.masks[sigma][:i], blending='additive', name='sigma {:.2f}'.format(sigma), visible=False)
 ```
 
 ```{python}
-points = [tuple(map(int, p)) for p in w.layers[-1].data]
-points
+# points = [tuple(map(int, p)) for p in w.layers[-1].data]
+# points
 ```
 
 ```{python}
-points[0] = (45, 320, 193)
+# points[0] = (45, 320, 193)
 ```
 
 ```{python}
-from skimage.morphology import flood, flood_fill, dilation, ball
+# from skimage.morphology import flood, flood_fill, dilation, ball
 ```
 
 ```{python}
-image = loaded.image.copy()
+# image = loaded.image.copy()
 ```
 
 ```{python}
-smooth_stack = ndi.gaussian_filter(loaded.image, 2)
-w.add_image(smooth_stack)
+# smooth_stack = ndi.gaussian_filter(loaded.image, 2)
+# w.add_image(smooth_stack)
 ```
 
 ```{python}
-tolerance = (smooth_stack.max() - smooth_stack[loaded.image>0].min())/5
-print(tolerance)
-for point in points:
-    blob_mask = flood(smooth_stack, point, tolerance=tolerance)
-    blob_mask = dilation(blob_mask, ball(4))
-    arr = flood_fill(blob_mask, (0,0,0), True)
-    blob_mask += ~arr
-    image[blob_mask] = 0
-    w.add_image(blob_mask, blending='additive')
+# tolerance = (smooth_stack.max() - smooth_stack[loaded.image>0].min())/5
+# print(tolerance)
+# for point in points:
+#     blob_mask = flood(smooth_stack, point, tolerance=tolerance)
+#     blob_mask = dilation(blob_mask, ball(4))
+#     arr = flood_fill(blob_mask, (0,0,0), True)
+#     blob_mask += ~arr
+#     image[blob_mask] = 0
+#     w.add_image(blob_mask, blending='additive')
 ```
 
 ```{python}
-w.add_image(image)
+# w.add_image(image)
 ```
 
 ```{python}
-_ = -1
+# _ = -1
 ```
 
 Векторное поле
 
 ```{python}
-mask_sum = np.zeros(loaded.image.shape, bool)
-emasks = {}
-for k in range(len(loaded.sigmas)-1,-1,-1):
-    sigma = loaded.sigmas[k]
-    mask = loaded.masks[sigma]
-    if k < len(loaded.sigmas)-1:
-        mask = mask & (mask ^ mask_sum)
-    mask_sum += mask.astype(bool)
-    emasks[sigma] = mask
+# mask_sum = np.zeros(loaded.image.shape, bool)
+# emasks = {}
+# for k in range(len(loaded.sigmas)-1,-1,-1):
+#     sigma = loaded.sigmas[k]
+#     mask = loaded.masks[sigma]
+#     if k < len(loaded.sigmas)-1:
+#         mask = mask & (mask ^ mask_sum)
+#     mask_sum += mask.astype(bool)
+#     emasks[sigma] = mask
 ```
 
 ```{python}
-w = napari.view_image(loaded.image, opacity=0.5, ndisplay=3)
-#     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
+# w = napari.view_image(loaded.image, opacity=0.5, ndisplay=3)
+# #     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
 
-for sigma in list(loaded.masks.keys())[:-1]:
-    vectors = loaded.vectors[emasks[sigma]]
-#     print('Vectors shape:', vectors.shape)
-    nd, nr, nc = loaded.image.shape
-    #indexgrid = np.meshgrid(np.arange(nd), np.arange(nr), np.arange(nc), indexing='ij')
-    indexgrid = np.mgrid[:nd, :nr, :nc]
-#     print('Indexgrid shape:', indexgrid[0].shape)
+# for sigma in list(loaded.masks.keys())[:-1]:
+#     vectors = loaded.vectors[emasks[sigma]]
+# #     print('Vectors shape:', vectors.shape)
+#     nd, nr, nc = loaded.image.shape
+#     #indexgrid = np.meshgrid(np.arange(nd), np.arange(nr), np.arange(nc), indexing='ij')
+#     indexgrid = np.mgrid[:nd, :nr, :nc]
+# #     print('Indexgrid shape:', indexgrid[0].shape)
 
-    z, y, x = [np.ravel(a[emasks[sigma]]) for a in indexgrid]
-    z1, y1, x1 = vectors[:,0], vectors[:,1], vectors[:,2]
+#     z, y, x = [np.ravel(a[emasks[sigma]]) for a in indexgrid]
+#     z1, y1, x1 = vectors[:,0], vectors[:,1], vectors[:,2]
 
-#     print('XYZ shapes:', x.shape, y.shape, z.shape)
-#     print('X1Y1Z1 shapes:', x1.shape, y1.shape, z1.shape)
+# #     print('XYZ shapes:', x.shape, y.shape, z.shape)
+# #     print('X1Y1Z1 shapes:', x1.shape, y1.shape, z1.shape)
 
-    vecs = np.zeros((vectors.shape[0], 2, 3))
+#     vecs = np.zeros((vectors.shape[0], 2, 3))
 
-    vecs[..., 0, 0] = z
-    vecs[..., 0, 1] = y
-    vecs[..., 0, 2] = x
-    #
-    vecs[..., 1, 0] = z1
-    vecs[..., 1, 1] = y1
-    vecs[..., 1, 2] = x1
-    #
-    properties = {'length': loaded.sato[emasks[sigma]]}
-    w.add_vectors(vecs, edge_width=0.1,  
-                  properties=properties,
-                  edge_color='length', 
-                  edge_colormap='turbo', 
-                  name=f'σ={sigma:.2f}', visible=False)
+#     vecs[..., 0, 0] = z
+#     vecs[..., 0, 1] = y
+#     vecs[..., 0, 2] = x
+#     #
+#     vecs[..., 1, 0] = z1
+#     vecs[..., 1, 1] = y1
+#     vecs[..., 1, 2] = x1
+#     #
+#     properties = {'length': loaded.sato[emasks[sigma]]}
+#     w.add_vectors(vecs, edge_width=0.1,  
+#                   properties=properties,
+#                   edge_color='length', 
+#                   edge_colormap='turbo', 
+#                   name=f'σ={sigma:.2f}', visible=False)
 ```
 
 ```{python}
