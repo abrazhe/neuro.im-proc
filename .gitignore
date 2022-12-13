@@ -5,3 +5,13 @@ existed_code/__pycache__/*
 existed_code/.ipynb_checkpoints/*
 
 .gitignore
+
+
+*.pickle
+*.swp
+*.out
+*.log
+*.bash
+output/
+
+protocol.py
