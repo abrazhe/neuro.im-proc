@@ -13,6 +13,8 @@ def draw_nodes(pos, nodelist):
 def choose_main(chosen_keys, values, mass_func=len):
     '''values - dict with keys contain chosen_keys and which values we should compare'''
     max_mass = 0
+    if not len(chosen_keys):
+        raise Exception('ERROR! chosen_keys are empty. Please check your data and try again')
     for key in chosen_keys:
         value = values[key]
         value_mass = mass_func(value)
@@ -96,7 +98,7 @@ class AstroGraph(nx.Graph):
                   key=lambda r: len(self.filter_graph(lambda n: n['root']==r)),
                   reverse=True,)
 
-
+    @property
     def branches(self):
         branches = {}
         for root in self.roots:
@@ -172,35 +174,28 @@ class AstroGraph(nx.Graph):
 
             cos_dist = np.apply_along_axis(cosine_arr, 1, rvecs_arr)
             roots_dists = np.linalg.norm(np.array(root) - roots_arr, axis=-1)
-            neighbours = [tuple(r) for r in roots_arr[(roots_dists < min_dist)*(cos_dist > 0.99)]]
-            STOP=False
+            neighbours = set([tuple(r) for r in roots_arr[(roots_dists < min_dist)*(cos_dist > 0.99)]])
             for bunch in bunches:
-                for n in neighbours:
-                    if n in bunch:
-                        bunch.update(neighbours)
-                        STOP = True
-                        continue
-
-                if STOP:
+                if bunch & neighbours:
+                    bunch.update(neighbours)
                     break
-            if not STOP:
+            else:
                 bunches.append(set(neighbours))
 
         set2del = []
 
         for i, cur_bunch in enumerate(bunches[:-1]):
-            FOUND = False
             for node in cur_bunch:
                 for bunch in bunches[i+1:]:
                     if node in bunch:
                         bunch.update(cur_bunch)
                         set2del.append(i)
-                        FOUND = True
                         break
-                if FOUND:
+                if i in set2del:
                     break
 
-        bunches.pop(*set2del)
+        if set2del:
+            bunches.pop(*set2del)
 
         return bunches
 
@@ -224,7 +219,7 @@ class AstroGraph(nx.Graph):
 
     def remove_parallels(self, min_dist=4):
         bunches = self.get_bunches(min_dist)
-        branches = self.branches()
+        branches = self.branches
         pos = {node: node for node in self.nodes}
 
         for bunch in bunches:
@@ -237,6 +232,7 @@ class AstroGraph(nx.Graph):
             # main_branch = Branch(mb, mr)
 
             for branch_root in tqdm(bunch):
+                # Can be commented if need to remove parallels from branch itself (NOT WORKING FOR NOW)
                 if branch_root == main_branch_root:
                     continue
                 branch = branches[branch_root]
@@ -258,26 +254,23 @@ class AstroGraph(nx.Graph):
 
 
     def clear_line(self, points, main_points, dists, min_dist=4):
-        # REMOVED = False
         for p, mbp, d in zip(points, main_points, dists):
             point = p
             mb_point = mbp
 
-            if tuple(p) not in self.graph:
+            if tuple(p) not in self.graph or tuple(p) == tuple(mbp):
                 continue
             elif self.graph.nodes[tuple(p)]['sigma_mask'] == self.graph.nodes[tuple(mbp)]['sigma_mask'] \
-                or d <= min_dist:
+                or d <= min_dist//2:
 #                 min(data.graph.nodes[tuple(mbp)]['sigma_opt'], data.graph.nodes[tuple(p)]['sigma_opt']):
                 self.graph.remove_node(tuple(p))
-                # REMOVED = True
             else:
                 break
 
         else:
             point = mb_point
 
-        # if REMOVED:
-        print('start_point: {}, end_point: {}'.format(mb_point, point))
+        # print('start_point: {}, end_point: {}'.format(mb_point, point))
         self.connect_points(mb_point, point)
 
 
@@ -292,10 +285,11 @@ class AstroGraph(nx.Graph):
         while tuple(cur_p) != tuple(end_p):
             cur_p = np.clip(cur_p + azi, np.min([start_point, end_point], axis=0), np.max([start_point, end_point], axis=0))
 
+            if self.graph.has_edge(tuple(prev_p), tuple(cur_p)) or self.graph.has_edge(tuple(cur_p), tuple(prev_p)):
+                prev_p = cur_p
+                continue
             self.graph.add_node(tuple(cur_p), root=root) #Add another parameters
-            print('prev_p: {}, cur_p: {}'.format(prev_p, cur_p))
-            if tuple(cur_p) == tuple(prev_p):
-                break
+            # print('prev_p: {}, cur_p: {}'.format(prev_p, cur_p))
             self.graph.add_edge(tuple(prev_p), tuple(cur_p))
             prev_p = cur_p
 
@@ -441,12 +435,12 @@ class AstroGraph(nx.Graph):
 
         return root_path
 
-    def swc(self, center=None, convergence=True):
+    def swc(self, center=None):
 
         roots  = self.roots
         collection = []
 
-        if convergence == True or center is None:
+        if center is None:
             #connect all roots for continuous structure
             convergence = {AstroGraph.roots_convergence(roots): (1, -1)}
             collection.append(convergence)
