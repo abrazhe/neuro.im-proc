@@ -26,9 +26,16 @@ def choose_main(chosen_keys, values, mass_func=len):
 
 
 class AstroGraph(nx.Graph):
-
+    version = 1.0
     def __init__(self, graph):
         self.graph = graph
+
+    @classmethod
+    def convert(cls, obj):
+        if 'version' in obj.__dict__.keys() and obj.version == cls.version:
+            return obj
+        new_obj = cls(obj.graph)
+        return new_obj
 
 
     @classmethod

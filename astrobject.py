@@ -17,6 +17,7 @@ from astropy.table import Table
 import astromorpho as astro
 from astro_graph import AstroGraph as AG
 
+import napari
 from tqdm.auto import tqdm
 
 ## CENTER DETECTION
@@ -282,6 +283,7 @@ def filter_fn_(G, n):
 
 
 class AstrObject:
+    version = 1.0
     def __init__(self, image, soma_mask=None, soma_shell_points=None, ratio=(1, 1, 1)):
         self.image = image
         self.ratio = ratio
@@ -305,6 +307,17 @@ class AstrObject:
         self.full_graph = None
 
         self._graph = None
+
+
+    @classmethod
+    def convert(cls, obj):
+        if 'version' in obj.__dict__.keys() and obj.version == cls.version:
+            obj.graph = AG.convert(obj.graph)
+            return obj
+        new_obj = cls(obj.image)
+        new_obj.__dict__ = obj.__dict__
+        new_obj.graph = AG.convert(obj.graph)
+        return new_obj
 
 
     @property
@@ -630,6 +643,22 @@ class AstrObject:
         data['parent'] = np.array(PAR)
 
         data.write(filename, format='ascii', overwrite=True)
+
+
+    # Vizualization
+    def show_cell(self, w=None, soma=False, sigmas=False, graph=False, visible=False):
+
+        if w is None:
+            w = napari.Viewer()
+        w.add_image(self.image, name='cell', ndisplay=3, opacity=0.5)
+
+        if soma:
+            w.add_image(self.soma_mask, name='soma', colormap='red', blending='additive', visible=visible)
+        if sigmas:
+            w.add_image(self.sigma_mask, name='sigma mask', colormap='turbo', blending='additive', visible=visible)
+        if graph:
+            self.graph.view_graph_as_colored_image(self.image.shape, viewer=w, name='graph')
+        return w
 
 
     # Analysis
