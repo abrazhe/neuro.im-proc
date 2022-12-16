@@ -208,13 +208,14 @@ class AstroGraph(nx.Graph):
 
 
     def get_sector(self, point):
-        selected_nodes = set(point)
+        selected_nodes = set([point])
         to_visit = set(self.successors(point))
         while to_visit:
             node = to_visit.pop()
             selected_nodes.add(node)
             to_visit.update(set(self.successors(node)))
         return selected_nodes
+
 
     def cut_branches(self, nodes):
         if type(nodes) is tuple:
@@ -378,14 +379,28 @@ class AstroGraph(nx.Graph):
         return str(self.graph)
 
 
+    def __add__(self, other):
+        new_graph =  AstroGraph(nx.compose(self.graph, other.graph))
+        new_graph.check_roots()
+        return new_graph
+
+    def __radd__(self, other):
+        new_graph = AstroGraph(nx.compose(other.graph, self.graph))
+        new_graph.check_roots()
+        return new_graph
+
+    def __iadd__(self, other):
+        self.gaph.update(other.graph)
+        self.check_roots()
+
+
     def check_roots(self):
         for root in self.roots:
             try:
                 nodes = self.get_sector(root)
             except:
                 continue
-            for node in nodes:
-                nx.set_node_attributes(self.graph, root, 'root')
+            nx.set_node_attributes(self.graph, dict.fromkeys(nodes, root), 'root')
 
 
     def related_tips(self, root):
@@ -413,9 +428,9 @@ class AstroGraph(nx.Graph):
 
         # return root_tips
 
-        root_nodes = self.get_sector(root)
+        # root_nodes = self.get_sector(root)
         tips = self.tips
-        root_tips = [tip for tip in tips if tip in root_nodes]
+        root_tips = [tip for tip in tips if tip['root'] == root]
         return root_tips
 
 

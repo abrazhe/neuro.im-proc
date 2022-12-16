@@ -283,7 +283,7 @@ def filter_fn_(G, n):
 
 
 class AstrObject:
-    version = 1.0
+    version = 1.01
     def __init__(self, image, soma_mask=None, soma_shell_points=None, ratio=(1, 1, 1)):
         self.image = image
         self.ratio = ratio
@@ -634,7 +634,7 @@ class AstrObject:
         ntype = np.full(len(POS), cell_type)
         ntype[0] = 1
 
-        data['# index'] = np.array(POS)
+        data['#index'] = np.array(POS)
         data['type'] = ntype
         data['X'] = np.array(X) * ratio[2]
         data['Y'] = np.array(Y) * ratio[1]
@@ -649,8 +649,8 @@ class AstrObject:
     def show_cell(self, w=None, soma=False, sigmas=False, graph=False, visible=False):
 
         if w is None:
-            w = napari.Viewer()
-        w.add_image(self.image, name='cell', ndisplay=3, opacity=0.5)
+            w = napari.Viewer(ndisplay=3)
+        w.add_image(self.image, name='cell', opacity=0.5)
 
         if soma:
             w.add_image(self.soma_mask, name='soma', colormap='red', blending='additive', visible=visible)
@@ -662,17 +662,20 @@ class AstrObject:
 
 
     # Analysis
-    def volume_fraction(self, plane=None, count=3, angle=np.pi/3, return_lines=True):
+    @staticmethod
+    def volume_fraction(image, center, plane=None, count=3, return_lines=True):
         if plane is None:
-            image = np.sum(self.image, axis=0)
+            image = np.sum(image, axis=0)
         else:
-            image = self.image[i]
+            image = image[plane]
 
-        center = self.center[1:]
+        if len(center) == 3:
+            center = center[1:]
 
         # max_x = image.shape[0]
         # max_y = image.shape[1]
         max_shape = np.max(*image.shape)
+        angle = np.pi/count
 
         vecs = np.array([[np.cos(i*angle), np.sin(i*angle)] for i in range(count)])
         lines = np.array([[np.clip([center-vecs[i]*max_shape], [0, 0], image.shape),
