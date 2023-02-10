@@ -182,7 +182,7 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001, offset=1,
     # between Hessian vector and linkage vector
     S = (1-alpha)*Sh + alpha*Se
 
-    # THIS IS THE MAIN THING IN THE NOTEBOOK
+    # THIS IS THE MAIN THING
     W  = Sx*beta + offset - N*S
 
     if verbose:
@@ -280,6 +280,25 @@ def filter_fn_(G, n):
     is_high = ni['occurence'] > 0 # very permissive, but some branches are valid and only occur once
     not_tip = len(list(G.successors(n)))
     return is_high and not_tip
+
+
+# Analysis
+
+def get_ellipsoid(radius, shape):
+    ''' ellipsoid setted to be proportional to image shape
+        radius - parameter for the smallest axis '''
+    if radius > shape[0]//2:
+        raise Exception('Error: radius should be lesser than half of first(minimum) image shape: {}'.format(shape[0]//2))
+    a=radius
+    b=radius*shape[1]/shape[0]
+    c=radius*shape[2]/shape[0]
+    ell = ellipsoid(a=a, b=b, c=c)
+    ellipsoid = ell ^ erosion(ell)
+    return ellisoid, (a, int(b), int(c))
+
+
+def zscore(data):
+    return np.abs(data-data.mean())/data.std()
 
 
 class AstrObject:
@@ -529,7 +548,7 @@ class AstrObject:
         return gx_all
 
 
-    def astro_graph_creation(self, min_path_length=25, loneliness=10, inplace=True):
+    def auto_graph_creation(self, min_path_length=25, loneliness=10, inplace=True):
         print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
         # for k, v in seq_paths.items():
@@ -657,7 +676,7 @@ class AstrObject:
         if sigmas:
             w.add_image(self.sigma_mask, name='sigma mask', colormap='turbo', blending='additive', visible=visible)
         if graph:
-            self.graph.view_graph_as_colored_image(self.image.shape, viewer=w, name='graph')
+            self.graph.view_as_colored_image(self.image.shape, viewer=w, name='graph')
         return w
 
 
@@ -674,7 +693,7 @@ class AstrObject:
 
         # max_x = image.shape[0]
         # max_y = image.shape[1]
-        max_shape = np.max(*image.shape)
+        max_shape = np.max(image.shape)
         angle = np.pi/count
 
         vecs = np.array([[np.cos(i*angle), np.sin(i*angle)] for i in range(count)])
@@ -686,7 +705,38 @@ class AstrObject:
         if return_lines:
             return lines, profiles
         else:
-            return profiles
+              return profiles
 
+
+    @staticmethod
+    def fur_distribution(image, center, process_mask, start_radius=3, end_radius=None, step=3):
+        def down_b(c, r, i):
+            return c[i]-r[i]-1
+
+        def up_b(c, r, i):
+            return c[i]+r[i]+2
+
+        image_shape=tuple(map(lambda pair: min(pair[0]-pair[1], pair[1])*2, zip(image.shape, center)))
+        if end_radius == None:
+            end_radius = image_shape[0]//2
+
+        distr = {}
+        for r in range(start_radius, end_radius, step):
+            ellipsoid, shape = get_ellipsoid(r, image_shape)
+            img = copy(image[down_b(center,shape,0):up_b(center,shape,0),
+                             down_b(center,shape,1):up_b(center,shape,1),
+                             down_b(center,shape,2):up_b(center,shape,2)])
+            img[~ellipsoid] = 0
+
+            zscore_arr = np.zeros(img.shape)
+            data = img[ellipsoid]
+            zscore_arr[ellipsoid] = zscore(data)
+            zscore_arr[zscore_arr>2] = 0
+            zscore_bool = np.zeros(zscore_arr.shape, dtype=bool)
+            zscore_bool[ellipsoid] = (zscore_arr[ellipsoid] > 0) & (img[ellipsoid] > 0)
+
+            distr[r] = copy(img[zscore_bool])
+
+        return distr
 
 # sigma_mask=self.id2sigma[self.sigma_mask[cur_p[0], cur_p[1], cur_p[2]]] Add parameters after removing parallels

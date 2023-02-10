@@ -305,7 +305,7 @@ class AstroGraph(nx.Graph):
     #### VIZUALIZATIONS
 
 
-    def view_graph_as_shapes(self, viewer, color=None, kind='points', name=None):
+    def view_as_shapes(self, viewer, color=None, kind='points', name=None):
         """
         display nodes of graph g in napari viewer as points or as lines
         """
@@ -320,7 +320,7 @@ class AstroGraph(nx.Graph):
         elif kind == 'path':
             viewer.add_shapes(pts, edge_width=0.5, shape_type='path', **kw)
 
-    def view_graph_as_colored_image(self, shape,
+    def view_as_colored_image(self, shape,
                                     viewer=None, name=None,
                                     root_chooser=lambda r: True,
                                     change_color_at_branchpoints=False):
@@ -430,7 +430,7 @@ class AstroGraph(nx.Graph):
 
         # root_nodes = self.get_sector(root)
         tips = self.tips
-        root_tips = [tip for tip in tips if tip['root'] == root]
+        root_tips = [tip for tip in tips if self.nodes[tip]['root'] == root]
         return root_tips
 
 
