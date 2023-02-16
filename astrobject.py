@@ -302,7 +302,7 @@ def zscore(data):
 
 
 class AstrObject:
-    version = 1.01
+    version = 1.02
     def __init__(self, image, soma_mask=None, soma_shell_points=None, ratio=(1, 1, 1)):
         self.image = image
         self.ratio = ratio
@@ -622,7 +622,7 @@ class AstrObject:
             del self.vectors
 
 
-    def swc_save(self, cell_type, filename, ratio=None):
+    def swc_save(self, cell_type, filename, ratio=None, thickness=False):
         astro = self.graph.swc(center=self.center)
         lines = []
         # credits = '# Created by Anya :))\n'
@@ -639,16 +639,20 @@ class AstrObject:
         Z = []
         POS = []
         PAR = []
+        RAD = []
 
         for r in astro:
-            for n in r.items():
-                x, y, z = n[0]
+            print('r', r)
+            for node, val in r.items():
+                x, y, z = node
                 X.append(x)
                 Y.append(y)
                 Z.append(z)
-                pos, par = n[1]
+
+                pos, par, rad = val
                 POS.append(pos)
                 PAR.append(par)
+                RAD.append(rad)
 
         ntype = np.full(len(POS), cell_type)
         ntype[0] = 1
@@ -658,7 +662,10 @@ class AstrObject:
         data['X'] = np.array(X) * ratio[2]
         data['Y'] = np.array(Y) * ratio[1]
         data['Z'] = np.array(Z) * ratio[0]
-        data['radius'] = radius
+        if thickness:
+            data['radius'] = np.array(RAD)
+        else:
+            data['radius'] = radius
         data['parent'] = np.array(PAR)
 
         data.write(filename, format='ascii', overwrite=True)

@@ -26,7 +26,7 @@ def choose_main(chosen_keys, values, mass_func=len):
 
 
 class AstroGraph(nx.Graph):
-    version = 1.0
+    version = 1.01
     def __init__(self, graph):
         self.graph = graph
 
@@ -436,7 +436,8 @@ class AstroGraph(nx.Graph):
 
     def root_travel(self, root):
         root_path = {}
-        root_path[root] = (1, -1)
+        soma_rad = 8
+        root_path[root] = (1, -1, soma_rad)
         count = 2
 
         tips = self.related_tips(root)
@@ -452,7 +453,7 @@ class AstroGraph(nx.Graph):
                     #return list with name of parent node
                     p_name = nx.predecessor(self.graph, root, n)
                     parent = root_path[p_name[0]][0]
-                    root_path[n] = (num, parent)
+                    root_path[n] = (num, parent, self.graph.nodes[n]['sigma_mask']/2)
                     count+=1
 
         return root_path
@@ -461,13 +462,14 @@ class AstroGraph(nx.Graph):
 
         roots  = self.roots
         collection = []
+        soma_rad = 8 # Просто 8 потому что 8
 
         if center is None:
             #connect all roots for continuous structure
-            convergence = {AstroGraph.roots_convergence(roots): (1, -1)}
+            convergence = {AstroGraph.roots_convergence(roots): (1, -1, soma_rad)}
             collection.append(convergence)
         else:
-            collection.append({center:(1, -1)})
+            collection.append({center:(1, -1, soma_rad)})
 
 
         for r in tqdm(roots):
@@ -481,19 +483,18 @@ class AstroGraph(nx.Graph):
             else:
                 value = max(collection[-1].values())[0]
 
-                for i in visit.items():
-
+                for node, val in visit.items():
                     #check if current node is root
-                    if i[0] is not r:
-                        new_pos = i[1][0] + value
-                        new_par = i[1][1] + value
-                        visit[i[0]] = (new_pos, new_par)
+                    if node is not r:
+                        new_pos = val[0] + value
+                        new_par = val[1] + value
+                        visit[node] = (new_pos, new_par, val[2])
 
                     else:
-                        new_pos = i[1][0] + value
-                        # new_par = i[1][1]
+                        new_pos = val[0] + value
+                        # new_par = val[1]
                         new_par = 1
-                        visit[i[0]] = (new_pos, new_par)
+                        visit[node] = (new_pos, new_par, val[2])
 
                 collection.append(visit)
 
