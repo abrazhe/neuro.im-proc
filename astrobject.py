@@ -8,12 +8,16 @@ from skimage import segmentation
 from skimage import feature as skf
 from skimage.morphology import flood, remove_small_objects, flood_fill
 from skimage.filters import threshold_li, threshold_triangle
+from skimage.measure import profile_line
 
 import networkx as nx
+from astropy.io import ascii
+from astropy.table import Table
 
 import astromorpho as astro
 from astro_graph import AstroGraph as AG
 
+import napari
 from tqdm.auto import tqdm
 
 ## CENTER DETECTION
@@ -62,8 +66,8 @@ def calc_vectors(image, sigma, scale):
 
 
 def calc_sato_mask(sato, sigma):
-    threshold = threshold_triangle(sato[sato>0])*sigma**0.5
-    mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
+    threshold = threshold_triangle(sato[sato>0])*sigma**0.5 # parameter try to change
+    mask = remove_small_objects(sato > threshold, min_size=int(sigma*64)) # parameter try to change
     return mask
 
 
@@ -85,15 +89,6 @@ def mask_thresholding(image, mask, threshold_method=threshold_li):
     th = threshold_method(lightness)
     pre_mask = remove_small_objects((image > th) & mask, 5, connectivity=3)
     return pre_mask
-
-
-def clear_sigmas(sigma2del, sigmas, vectors, sato):
-    for sigma in sigma2del.values():
-        del sato[sigma]
-        del vectors[sigma]
-
-    sigmas = np.delete(sigmas, list(sigma2del.keys()))
-    return sigmas
 
 
 def merge_sato(image, satos, masks, sigma2id):
@@ -187,7 +182,7 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001, offset=1,
     # between Hessian vector and linkage vector
     S = (1-alpha)*Sh + alpha*Se
 
-    # THIS IS THE MAIN THING IN THE NOTEBOOK
+    # THIS IS THE MAIN THING
     W  = Sx*beta + offset - N*S
 
     if verbose:
@@ -287,12 +282,61 @@ def filter_fn_(G, n):
     return is_high and not_tip
 
 
+# Analysis
+
+def get_ellipsoid(radius, shape):
+    ''' ellipsoid setted to be proportional to image shape
+        radius - parameter for the smallest axis '''
+    if radius > shape[0]//2:
+        raise Exception('Error: radius should be lesser than half of first(minimum) image shape: {}'.format(shape[0]//2))
+    a=radius
+    b=radius*shape[1]/shape[0]
+    c=radius*shape[2]/shape[0]
+    ell = ellipsoid(a=a, b=b, c=c)
+    ellipsoid = ell ^ erosion(ell)
+    return ellisoid, (a, int(b), int(c))
+
+
+def zscore(data):
+    return np.abs(data-data.mean())/data.std()
+
+
 class AstrObject:
-    def __init__(self, image, soma_mask=None, soma_shell_points=None):
+    version = 1.02
+    def __init__(self, image, soma_mask=None, soma_shell_points=None, ratio=(1, 1, 1)):
         self.image = image
+        self.ratio = ratio
+
+        self.center = None
+
         self.soma_mask = soma_mask
+        self.soma_shell_mask = None
         self.soma_shell_points = soma_shell_points
+
+        self.sigmas = None
+        self.id2sigma = None
+        self.sigma2id = None
+        self.masks = None
+
+        self.sato = None
+        self.vectors = None
+
+        self.sigma_mask = None
+
+        self.full_graph = None
+
         self._graph = None
+
+
+    @classmethod
+    def convert(cls, obj):
+        if 'version' in obj.__dict__.keys() and obj.version == cls.version:
+            obj.graph = AG.convert(obj.graph)
+            return obj
+        new_obj = cls(obj.image)
+        new_obj.__dict__ = obj.__dict__
+        new_obj.graph = AG.convert(obj.graph)
+        return new_obj
 
 
     @property
@@ -314,13 +358,18 @@ class AstrObject:
         self.center = center
 
 
-    def soma_segmentation(self, iterations=10, return_shell=False):
+    def soma_segmentation(self, tolerance=None, iterations=10, return_shell=False, expanding=True):
         ''' segment soma from image'''
         smooth_stack = ndi.gaussian_filter(self.image, 3)
-        tol = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
-        soma_seed_mask = flood(smooth_stack, self.center, tolerance=tol)
-        print('Mask Expanding')
-        soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        if tolerance is None:
+            tolerance = (smooth_stack.max() - smooth_stack[self.image>0].min())/10
+        soma_seed_mask = flood(smooth_stack, self.center, tolerance=tolerance)
+
+        if expanding:
+            print('Mask Expanding')
+            soma_mask = astro.morpho.expand_mask(soma_seed_mask, smooth_stack, iterations=iterations)
+        else:
+            soma_mask = soma_seed_mask
 
         # Filling holes if exist
         arr = flood_fill(soma_mask, (0,0,0), True)
@@ -351,13 +400,15 @@ class AstrObject:
             masks.append(calc_sato_mask(satos[sigma], sigma))
 
         print('Masks and sigmas cleaning...')
-        sigma2del = {}
-        for i, sigma in enumerate(sigmas):
+        # sigma2del = {}
+        for i, sigma in enumerate(sigmas.copy()):
             if np.sum(masks[i]) == 0:
-                sigma2del[i] = sigma
+                del satos[sigma]
+                del vectors[sigma]
+                sigmas = sigmas[sigmas!=sigma]
                 masks[i] = None
+        self.sigmas = sigmas
 
-        self.sigmas = clear_sigmas(sigma2del, sigmas, vectors, satos)
         masks = [mask for mask in masks if mask is not None]
 
         masks = {sigma: mask for sigma, mask in zip([*sigmas, 0], masks_overlapping(*masks, self.soma_mask, reverse=False))}
@@ -376,15 +427,15 @@ class AstrObject:
         print('Merging...')
 
         self.sato = merge_sato(self.image, satos, masks, self.sigma2id)
-        self.vectors, masks_exclusive = merge_vectors(vectors, self.sigmas, masks)
+        self.vectors, self.masks_exclusive = merge_vectors(vectors, self.sigmas, masks)
 
         sigma_mask = np.zeros(self.image.shape, dtype=int)
         for sigma_id, sigma in self.id2sigma.items():
-            sigma_mask[masks_exclusive[sigma]] = sigma_id
+            sigma_mask[self.masks_exclusive[sigma]] = sigma_id
         self.sigma_mask = sigma_mask
 
 
-    def full_graph_plotting(self, alpha, beta, offset=1):
+    def full_graph_construction(self, alpha, beta, offset=1, preventing_jumps=True):
         i, j, k = np.indices(self.image.shape)
         idx = np.stack((i,j,k), axis=3)
         crops = prep_crops()
@@ -398,10 +449,11 @@ class AstrObject:
                                                      verbose=False)
             graph.graph.add_weighted_edges_from(edges)
 
-        # no-no for too big sigma jumps
-        for p1, p2, data in tqdm(graph.edges(data=True), desc='Preventing "jumps"'):
-            if np.abs(self.sigma_mask[p1]-self.sigma_mask[p2]) > 1:
-                graph.graph.add_edge(p1,p2, weight=data['weight']*2)
+        if preventing_jumps:
+            # no-no for too big sigma jumps
+            for p1, p2, data in tqdm(graph.edges(data=True), desc='Preventing "jumps"'):
+                if np.abs(self.sigma_mask[p1]-self.sigma_mask[p2]) > 1:
+                    graph.graph.add_edge(p1,p2, weight=data['weight']*2)
 
         # Add soma points
         idmin, idmax = idx[self.soma_shell_mask].min(axis=0), idx[self.soma_shell_mask].max(axis=0)+1
@@ -436,7 +488,8 @@ class AstrObject:
         visited = set(self.soma_shell_points)
         path_acc = {}
         for sigma in tqdm(sorted(self.sigmas, reverse=True)):
-            _, paths = AG.find_paths(sub_graphs[sigma], targets, self.image.shape)
+            print(sigma)
+            _, paths = AG.find_paths(sub_graphs[sigma], self.image.shape, targets)
             targets = targets.union(set(paths.keys()))
             if sigma < np.max(self.sigmas):
                 paths = {loc:trim_path(self.full_graph, path, sigma, visited)
@@ -459,8 +512,10 @@ class AstrObject:
         """
         gx_all = nx.compose_all([seq_paths[sigma].graph for sigma in sorted(seq_paths)])
         gx_all = AG(gx_all)
-        all_tips = gx_all.get_tips()
+
+        all_tips = gx_all.tips
         fine_tips = list({t for t in all_tips if self.full_graph.nodes[t]['sigma_mask'] <= max_start_sigma})
+
         new_paths = (follow_to_root(gx_all.graph, t) for t in fine_tips)
         # Can leave just min_path_length (?)
         new_paths = (p for p in new_paths
@@ -493,7 +548,7 @@ class AstrObject:
         return gx_all
 
 
-    def astro_graph_plotting(self, min_path_length=25, loneliness=10):
+    def auto_graph_creation(self, min_path_length=25, loneliness=10, inplace=True):
         print('scaling sequential paths...')
         seq_paths = self.scale_sequential_paths()
         # for k, v in seq_paths.items():
@@ -501,14 +556,194 @@ class AstrObject:
         print('compose path segments...')
         gx_all = self.compose_path_segments(self.image.shape, seq_paths, ultimate_targets=set(self.soma_shell_points), min_path_length=min_path_length)
         gx_all.check_for_cycles(verbose=True)
-        print('gx_all', len(gx_all.nodes))
 
         gx_all_occ = gx_all
-        print(type(gx_all_occ))
         for i in range(loneliness):
             good_nodes = (node for node in gx_all_occ.graph if filter_fn_(gx_all_occ.graph, node))
 
-            gx_all_occ = AG(gx_all_occ.subgraph(good_nodes))
-            print(len(gx_all_occ.nodes), type(gx_all_occ))
+            gx_all_occ = AG(nx.DiGraph(gx_all_occ.subgraph(good_nodes)))
 
-        self.graph = gx_all_occ
+        if inplace:
+            self.graph = gx_all_occ
+        else:
+            return gx_all_occ
+
+
+    def tips_graph_creation(self, tips, sources=None, min_path_length=1, proximity=3, inplace=True):
+        if type(tips) is tuple:
+            tips = [tips]
+
+        soma_shell = set(self.soma_shell_points)
+        if sources is None:
+            sources = soma_shell
+        else:
+            for i, source in enumerate(sources):
+                if source not in soma_shell:
+                    _, path2soma = AG.find_paths(self.full_graph.graph, self.image.shape, soma_shell, source, min_path_length=1)
+                    sources[i] = path2soma[source][-1]
+
+        paths = {}
+        for tip in tqdm(tips, desc='Pathing'):
+            if tip in self.full_graph.nodes:
+                _, path = AG.find_paths(self.full_graph.graph, self.image.shape, sources, tip, min_path_length=min_path_length)
+                paths.update(path)
+
+        print('Composing...')
+        non_empty_paths = [p for p in paths.values() if p]
+        if len(non_empty_paths):
+            gx_all = AG.batch_compose_all(non_empty_paths, verbose=False)
+        else:
+            raise Exception('ERROR!! Nothing to compose. Please choose another points and try again')
+
+        print('Setting attributes...')
+        # add the useful attributes
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sigma_mask, lambda x: self.id2sigma[x]),
+                               'sigma_mask')
+
+        nx.set_node_attributes(gx_all,
+                               gx_all.get_attrs_by_nodes(self.sato, lambda x: self.id2sigma[x]),
+                               'sigma_opt')
+
+        if inplace:
+            self.graph = gx_all
+        else:
+            return gx_all
+
+
+    def clear(self, part):
+        if part == 'graph':
+            del self.full_graph
+            del self.soma_shell
+            del self.soma_shell_points
+            del self.soma_shell_mask
+            del self.sigma_mask
+            del self.sato
+            del self.vectors
+
+
+    def swc_save(self, cell_type, filename, ratio=None, thickness=False):
+        astro = self.graph.swc(center=self.center)
+        lines = []
+        # credits = '# Created by Anya :))\n'
+        keys = ['#index', 'type ', 'X ', 'Y ', 'Z ', 'radius ', 'parent', '\n']
+        soma = 1
+        radius = 0.125
+
+        #ascii version
+        data = Table()
+        ratio = ratio if ratio else self.ratio
+
+        X = []
+        Y = []
+        Z = []
+        POS = []
+        PAR = []
+        RAD = []
+
+        for r in astro:
+            print('r', r)
+            for node, val in r.items():
+                x, y, z = node
+                X.append(x)
+                Y.append(y)
+                Z.append(z)
+
+                pos, par, rad = val
+                POS.append(pos)
+                PAR.append(par)
+                RAD.append(rad)
+
+        ntype = np.full(len(POS), cell_type)
+        ntype[0] = 1
+
+        data['#index'] = np.array(POS)
+        data['type'] = ntype
+        data['X'] = np.array(X) * ratio[2]
+        data['Y'] = np.array(Y) * ratio[1]
+        data['Z'] = np.array(Z) * ratio[0]
+        if thickness:
+            data['radius'] = np.array(RAD)
+        else:
+            data['radius'] = radius
+        data['parent'] = np.array(PAR)
+
+        data.write(filename, format='ascii', overwrite=True)
+
+
+    # Vizualization
+    def show_cell(self, w=None, soma=False, sigmas=False, graph=False, visible=False):
+
+        if w is None:
+            w = napari.Viewer(ndisplay=3)
+        w.add_image(self.image, name='cell', opacity=0.5)
+
+        if soma:
+            w.add_image(self.soma_mask, name='soma', colormap='red', blending='additive', visible=visible)
+        if sigmas:
+            w.add_image(self.sigma_mask, name='sigma mask', colormap='turbo', blending='additive', visible=visible)
+        if graph:
+            self.graph.view_as_colored_image(self.image.shape, viewer=w, name='graph')
+        return w
+
+
+    # Analysis
+    @staticmethod
+    def volume_fraction(image, center, plane=None, count=3, return_lines=True):
+        if plane is None:
+            image = np.sum(image, axis=0)
+        else:
+            image = image[plane]
+
+        if len(center) == 3:
+            center = center[1:]
+
+        # max_x = image.shape[0]
+        # max_y = image.shape[1]
+        max_shape = np.max(image.shape)
+        angle = np.pi/count
+
+        vecs = np.array([[np.cos(i*angle), np.sin(i*angle)] for i in range(count)])
+        lines = np.array([[np.clip([center-vecs[i]*max_shape], [0, 0], image.shape),
+                           np.clip([center+vecs[i]*max_shape], [0, 0], image.shape)] for i in range(count)])
+
+        profiles = [profile_line(*lines[i]) for i in range(count)]
+
+        if return_lines:
+            return lines, profiles
+        else:
+              return profiles
+
+
+    @staticmethod
+    def fur_distribution(image, center, process_mask, start_radius=3, end_radius=None, step=3):
+        def down_b(c, r, i):
+            return c[i]-r[i]-1
+
+        def up_b(c, r, i):
+            return c[i]+r[i]+2
+
+        image_shape=tuple(map(lambda pair: min(pair[0]-pair[1], pair[1])*2, zip(image.shape, center)))
+        if end_radius == None:
+            end_radius = image_shape[0]//2
+
+        distr = {}
+        for r in range(start_radius, end_radius, step):
+            ellipsoid, shape = get_ellipsoid(r, image_shape)
+            img = copy(image[down_b(center,shape,0):up_b(center,shape,0),
+                             down_b(center,shape,1):up_b(center,shape,1),
+                             down_b(center,shape,2):up_b(center,shape,2)])
+            img[~ellipsoid] = 0
+
+            zscore_arr = np.zeros(img.shape)
+            data = img[ellipsoid]
+            zscore_arr[ellipsoid] = zscore(data)
+            zscore_arr[zscore_arr>2] = 0
+            zscore_bool = np.zeros(zscore_arr.shape, dtype=bool)
+            zscore_bool[ellipsoid] = (zscore_arr[ellipsoid] > 0) & (img[ellipsoid] > 0)
+
+            distr[r] = copy(img[zscore_bool])
+
+        return distr
+
+# sigma_mask=self.id2sigma[self.sigma_mask[cur_p[0], cur_p[1], cur_p[2]]] Add parameters after removing parallels

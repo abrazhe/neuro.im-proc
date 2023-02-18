@@ -8,4 +8,3 @@ class Astrocyte:
         self.image = image
         self.sigma_mask = sigma_mask
         self.parameters = params
-
