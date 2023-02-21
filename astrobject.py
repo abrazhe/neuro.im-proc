@@ -663,7 +663,7 @@ class AstrObject:
         data['Y'] = np.array(Y) * ratio[1]
         data['Z'] = np.array(Z) * ratio[0]
         if thickness:
-            data['radius'] = np.array(RAD)
+            data['radius'] = np.array(RAD) * ratio[0]
         else:
             data['radius'] = radius
         data['parent'] = np.array(PAR)
