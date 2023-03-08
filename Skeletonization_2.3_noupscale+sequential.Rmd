@@ -6,7 +6,7 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.8
+      jupytext_version: 1.14.4
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -156,10 +156,10 @@ elif os.path.exists('/home/levtg/astro-morpho'):
 else:
     print("Dont know where to look for the data")
 
-#filename = '3wk-both1-grn-raw.pic' # Test cell AKA "Good fella"
+filename = '3wk-both1-grn-raw.pic' # Test cell AKA "Good fella"
 #filename = '4wk-ly9-raw.pic' # Octopus
 # filename = '2020-12-30 WT1 18month slice1-3 hippo CA1 SR astrocyte lucifer yellow 60X zoom2,5.tif'
-filename = '3wk-ly1-raw.pic' # Cell-killer
+#filename = '3wk-ly1-raw.pic' # Cell-killer
 
 use_clahe = True
 sigmas = np.arange(0.5, 8, 0.5)
@@ -199,6 +199,20 @@ else:
     zoom = 4
     
 print(zoom)
+```
+
+```{python}
+stack.shape
+```
+
+Странно, неужели у нас эти данные (`.pic`) были в uint8 формате все это время?
+
+```{python}
+stack.dtype
+```
+
+```{python}
+
 ```
 
 # Предобработка изображения
@@ -471,6 +485,15 @@ sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
 ```{python}
 sato_coll = {}
 Vf_coll = {}
+```
+
+```{python}
+
+#host
+```
+
+```{python}
+astro.morpho.eigh = np.linalg.eigh # у меня падает Tf, который с cuda. Так медленнее, но не падает (delta)
 ```
 
 ```{python}
@@ -799,7 +822,9 @@ def tensor_cosine_similarity(U, V, return_norms=False):
 
 ```{python}
 def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001,
-               do_threshold=True, return_W=False, verbose=False):
+               do_threshold=True, return_W=False, verbose=False,
+               as_similarities=False,
+              ):
     
     # cовпадение направлений из Гессиана
     Sh, (normU,normV) = tensor_cosine_similarity(U,V, return_norms=True)
@@ -835,7 +860,13 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001,
     # THIS IS THE MAIN THING IN THE NOTEBOOK
     #W = np.exp(-N*S) + Sx*beta + 100*()
     #W  = Sx*beta + offset - N*S
-    W = Sx * beta + offset - N*Sh*Se
+    #W = Sx * beta + offset - N*Sh*Se
+    
+    if as_similarities:
+        W = N*Sh*Se # temporarily, make weights as adjacency, not distance...
+    else:
+        W = Sx * beta + offset - N*Sh*Se
+        
     
     
     if verbose:
@@ -851,8 +882,15 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001,
     
     Wflat = W.ravel()
     #cond = Wflat < Wflat.max()
-    cond = np.ravel(N) > 0
+    #cond = np.ravel(N) > 0 # last
+    
+    if as_similarities:
+        cond = (np.ravel(N) > 0)*(Wflat>0) # skip zero-weight weights (if weights are similarities)
+    else:
+        cond = (np.ravel(N) > 0)
+    
     Sx = Wflat[cond]
+    
     #thresholds = [1-threshold_minimum(Sx),
     #              1-threshold_li(Sx),
     #              1-threshold_triangle(Sx)
@@ -862,15 +900,21 @@ def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001,
     # Thresholding is the tricky bit: too little and it takes forever to compute paths
     # Too high and you can't build paths at all
     
-    # The negative threshold of negative distribution trick
-    # Rationale is that we want to take "dark" values rather than "bright"
-    # So we take a negative of the  "picture" and flip over the threshold
-    th = -threshold_li(-Sx)
-    #li = threshold_li(Wflat) if do_threshold else W.max()
-    th = th if do_threshold else W.max()
-    Wgood = (Wflat < th) & (np.ravel(N)>0) # was this
-    #Wgood = (np.ravel(N) > 0) # temporarily, just where vectors are non-negative
     
+    if as_similarities:
+        Wgood = (Wflat > 0) & (np.ravel(N)>0) # temporarily, if weights are similarities
+    else:      
+        # if weights are distances
+        # The negative threshold of negative distribution trick
+        # Rationale is that we want to take "dark" values rather than "bright"
+        # So we take a negative of the  "picture" and flip over the threshold
+        th = -threshold_li(-Sx)
+        #li = threshold_li(Wflat) if do_threshold else W.max()
+        th = th if do_threshold else W.max()
+
+        
+        Wgood = (Wflat < th) & (np.ravel(N)>0) # was this
+        #Wgood = (np.ravel(N) > 0) # temporarily, just where vectors are non-negative    
     
     if verbose:
         print('Thresholding done')
@@ -933,19 +977,330 @@ crops[0]
 alpha = 0.1 # relative weight of coside distance between Hessian vector and linkage vector
 beta = 0.0  # weight of Euclidean distance between the nodes 
 
-graph = nx.Graph()
+graph_dist = nx.Graph()
 
 vectors = vectors_best
 
 for crop, acrop in tqdm(crops):
-         graph.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], 
+         graph_dist.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], 
                                                   idx[crop], idx[acrop], 
                                                   alpha=alpha, beta=beta,
+                                                  as_similarities=False,
                                                   verbose=False))
 ```
 
 ```{python}
+# Move these to Papermill parameters?
+alpha = 0.1 # relative weight of coside distance between Hessian vector and linkage vector
+beta = 0.0  # weight of Euclidean distance between the nodes 
 
+graph_sim = nx.Graph()
+
+vectors = vectors_best
+
+for crop, acrop in tqdm(crops):
+         graph_sim.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], 
+                                                  idx[crop], idx[acrop], 
+                                                  alpha=alpha, beta=beta,
+                                                  as_similarities=True,     
+                                                  verbose=False))
+```
+
+##  Небольшой спектральный анализ получившегося графа (получившихся графов)
+
+**Note:**
+
+```{python}
+final_image.shape
+```
+
+```{python}
+vectors.shape
+```
+
+```{python}
+import plotly.express as px
+```
+
+```{python}
+#len(graph)
+```
+
+```{python}
+# first, just look at the eigenvalues (takes too long to compute...)
+# #%time eigs = nx.laplacian_spectrum(graph)
+```
+
+```{python}
+#len(eigs)
+```
+
+```{python}
+#plt.figure()
+# plt.plot(eigs[:50], 'sk-')
+```
+
+### Just the Fiedler vector (corresponding to the first non-zero eigenvalue)
+
+```{python}
+comps_d = list(nx.connected_components(graph_dist)) # nx.fiedler_vector requires a connected (sub-)graph
+comps_s = list(nx.connected_components(graph_sim)) # nx.fiedler_vector requires a connected (sub-)graph
+```
+
+```{python}
+len(graph_dist), len(graph_sim), len(comps_d), len(comps_s)
+```
+
+```{python}
+clengths_d = [len(c) for c in comps_d]
+clengths_s = [len(c) for c in comps_s]
+```
+
+```{python}
+g1_d = graph_dist.subgraph(comps_d[np.argmax(clengths_d)])
+g1_s = graph_sim.subgraph(comps_s[np.argmax(clengths_s)])
+```
+
+```{python}
+len(g1_d), len(g1_s)
+```
+
+```{python}
+# #%time fv = nx.fiedler_vector(g1, weight=None)
+# %time fv_d = nx.fiedler_vector(g1_d) # how about with weights?
+
+```
+
+```{python}
+# %time fv_s = nx.fiedler_vector(g1_s) # how about with weights?
+```
+
+```{python}
+fvx_d = np.zeros(final_image.shape, np.float32)
+fvx_s = np.zeros(final_image.shape, np.float32)
+
+for vi, n in zip(tqdm(fv_d), g1_d.nodes):
+    fvx_d[n] = vi
+
+for vi, n in zip(tqdm(fv_s), g1_s.nodes):
+    fvx_s[n] = vi
+```
+
+```{python}
+w_d = napari.view_image(-fvx_d*(fvx_d<0),colormap='cyan', name='dist,neg')
+w_d.add_image(fvx_d*(fvx_d>0), colormap='magenta',blending='additive',name='dist, pos')
+```
+
+```{python}
+w_s = napari.view_image(-fvx_s*(fvx_s<0),colormap='cyan', name='sim,neg')
+w_s.add_image(fvx_s*(fvx_s>0), colormap='magenta',blending='additive',name='sim, pos')
+```
+
+
+#### Laplacian matrix to play with:
+
+1. [ ] Is it returned as a sparse matrix or dense matrix?
+2. [ ] Which normalization is used in the `normalized_laplacian_matrix`?
+3. [ ] How long will it take to compute the eigendecomposition of L and Ln just using `numpy.linalg`? Unfortunately, CUDA-based tensorflow's eigh crashes on delta at the moment. 
+
+```{python}
+
+
+```
+
+```{python}
+# #%time L = nx.laplacian_matrix(g1, weight=None) #simply one before manipulating weights
+# %time L_s = nx.laplacian_matrix(g1_s) 
+# %time L_d = nx.laplacian_matrix(g1_d) 
+```
+
+```{python}
+A_s = nx.adjacency_matrix(g1_s)
+D_s = np.max(A_s, axis=0)
+```
+
+```{python}
+np.ravel(D_s.todense())
+```
+
+```{python}
+D_s
+```
+
+```{python}
+A_d = nx.adjacency_matrix(g1_d)
+D_d = np.max(A_d, axis=0)
+```
+
+```{python}
+dv_d = np.zeros(final_image.shape, np.float32)
+dv_s = np.zeros(final_image.shape, np.float32)
+
+for di, n in zip(tqdm(np.ravel(D_d.todense())), g1_d.nodes):
+    dv_d[n] = di
+    
+for di, n in zip(tqdm(np.ravel(D_s.todense())), g1_s.nodes):
+    dv_s[n] = di    
+```
+
+```{python}
+w = napari.view_image(dv_d, colormap='inferno', name='degree, dist')
+w.add_image(dv_s, colormap='inferno', name= 'degree, sim')
+```
+
+```{python}
+_=1
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
+```{python}
+from scipy import sparse as scsparse
+```
+
+```{python}
+import sparse
+```
+
+```{python}
+
+```
+
+```{python}
+# %time eigvals_d,eigvecs_d = scsparse.linalg.eigsh(L_d.astype(np.float32),k=20,which='SM') # try the simple approach...
+```
+
+```{python}
+# %time eigvals_s,eigvecs_s = scsparse.linalg.eigsh(L_s.astype(np.float32),k=20,which='SM') # try the simple approach...
+```
+
+- [ ] **next thing to do** -- try using normalized Laplacians
+
+```{python}
+eigvals_d
+```
+
+```{python}
+np.min(eigvals_d.real), np.min(eigvals_s.real)
+```
+
+```{python}
+# ksort = np.argsort(eigvals)
+# eigvals = eigvals[ksort].real
+# eigvecs = eigvecs[:,ksort].real
+```
+
+```{python}
+plt.plot(eigvals_d, 'sb-')
+plt.plot(eigvals_s, 'sr-')
+```
+
+```{python}
+
+```
+
+```{python}
+#fv.shape, eigvecs.shape
+```
+
+```{python}
+#img.shape, img_clahe.shape
+```
+
+```{python}
+#np.diag(D)
+
+```
+
+```{python}
+fve_s = np.zeros(final_image.shape, np.float32)
+
+
+keig = 3
+for vi, n in zip(tqdm(eigvecs_s[:,keig]), g1_s.nodes):
+    fve_s[n] = vi
+```
+
+```{python}
+
+```
+
+```{python}
+#fve.min(), fve.max()
+```
+
+```{python}
+w = napari.view_image(-fve_s*(fve_s<0),colormap='cyan', name='sim, neg',)
+w.add_image(fve_s*(fve_s>0), colormap='magenta',blending='additive', name='sim, pos')
+```
+
+```{python}
+eigvecs_s[:,1:].shape
+```
+
+```{python}
+from sklearn import cluster
+```
+
+```{python}
+clust = cluster.KMeans(n_clusters=20)
+```
+
+```{python}
+labs_s = clust.fit_predict(eigvecs_s[:,1:])
+labs_d = clust.fit_predict(eigvecs_d[:,1:])
+```
+
+```{python}
+labs_d.shape
+```
+
+```{python}
+#labs.min(), labs.max()
+```
+
+```{python}
+fvl_d = np.zeros(final_image.shape, np.uint8)
+fvl_s = np.zeros(final_image.shape, np.uint8)
+
+for vi, n in zip(tqdm(labs_s), g1_s.nodes):
+    fvl_s[n] = vi + 1
+    
+for vi, n in zip(tqdm(labs_d), g1_d.nodes):
+    fvl_d[n] = vi + 1    
+```
+
+```{python}
+#fvl.min(), fvl.max()
+```
+
+```{python}
+w = napari.view_image(fvl_d, contrast_limits=(0,20), name='dist')
+w.add_image(fvl_s, contrast_limits=(0,20), name='sim')
+```
+
+```{python}
+#plt.hexbin(eigvecs[:,2], eigvecs[:,3], bins='log')
+```
+
+```{python}
+plt.plot(eigvecs_d[:,2], eigvecs_d[:,3], ',')
+plt.xlim(-0.01,0.01)
+```
+
+```{python}
+plt.plot(eigvecs_s[:,2], eigvecs_s[:,3], ',')
+plt.xlim(-0.01,0.01)
+```
+
+```{python}
+#px.scatter_3d(*eigvecs[:100,1:4].T)
 ```
 
 ```{python}
