@@ -6,11 +6,11 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.13.7
+      jupytext_version: 1.14.5
   kernelspec:
-    display_name: venv
+    display_name: Python 3 (ipykernel)
     language: python
-    name: venv
+    name: python3
 ---
 
 <!-- #region -->
@@ -143,8 +143,8 @@ plt.rc('figure', dpi=150)
 # Параметры для запуска
 
 ```{python tags=c("parameters")}
-if os.path.exists('/home/brazhe/yadisk/'):
-    data_dir = '/home/brazhe/yadisk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
+if os.path.exists('/home/brazhe/yandex-disk/'):
+    data_dir = '/home/brazhe/yandex-disk/data-shared-comfi/3D-astrocyte-images/selected-for-complexity/'
 
 elif os.path.exists('/home/levtg/astro-morpho'):
     data_dir = '/home/levtg/astro-morpho/data/stacks'
@@ -612,6 +612,10 @@ len(sigmas)
 ```
 
 ```{python}
+VERBOSE=1
+```
+
+```{python}
 if VERBOSE:
     idx = len(sigmas)
     w = napari.view_image(final_image, opacity=0.5)
@@ -719,7 +723,7 @@ if VERBOSE:
 ```
 
 ```{python}
-skel_coll = {sigma: astro.morpho.peaks_in_stack(sato_coll[sigma],masks[sigma])>3 for sigma in tqdm(sigmas)}
+skel_coll = {sigma: astro.morpho.peaks_in_stack(sato_coll[sigma],masks[sigma])>2 for sigma in tqdm(sigmas)}
 ```
 
 ```{python}
@@ -992,7 +996,7 @@ for crop, acrop in tqdm(crops):
     Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
 ```
 
-```{python tags=c()}
+```{python}
 # %%time 
 
 for p1, p2, weight in Gsoma.edges(data=True):
@@ -1226,6 +1230,186 @@ _ = 1
 #     w.screenshot(os.path.join(output_dir, '{}_graph.png'.format(filename)))
 ```
 
+# Principal graphs 
+
+```{python}
+paths = vis.graph_to_paths(gx_all_occ)
+```
+
+```{python}
+paths.keys()
+```
+
+```{python}
+#gg = gx_all_occ.to_undirected()
+```
+
+```{python}
+paths2 = sorted([paths[r] for r in paths], key = len, reverse=True)
+```
+
+```{python}
+len(paths2[0])
+```
+
+```{python}
+#comps = list(nx.connected_components(gg))
+```
+
+```{python}
+#comps = sorted(comps, key=lambda x: len(x), reverse=True)
+```
+
+```{python}
+#points = np.array(list(comps[0])).astype(np.float32)
+```
+
+```{python}
+#napari.view_points(points)
+```
+
+```{python}
+points = np.unique(np.concatenate(paths2[0]),axis=0).astype(np.float32)
+points += 0.01*np.random.randn(*points.shape)
+```
+
+```{python}
+
+```
+
+```{python}
+import elpigraph
+```
+
+```{python}
+# question: how to select NumNodes?
+```
+
+```{python}
+len(points)
+```
+
+```{python}
+xpoints = np.random.permutation(points)[:1000]
+```
+
+```{python}
+xpoints2 = np.concatenate([xpoints + 0.25*np.random.randn(*xpoints.shape),
+                           xpoints + 0.25*np.random.randn(*xpoints.shape),
+                           xpoints + 0.25*np.random.randn(*xpoints.shape),
+                           xpoints + 0.25*np.random.randn(*xpoints.shape)])
+```
+
+```{python}
+xpoints2.shape
+```
+
+```{python}
+subp = [p[::2] for p in paths2[0]]
+
+subp1 = subp[np.argmax([len(p) for p in subp])]
+```
+
+```{python}
+subp1
+```
+
+```{python}
+len(subp1)
+```
+
+```{python}
+edges = np.array([np.arange(len(subp1)-1), np.arange(1,len(subp1))]).T
+```
+
+```{python}
+edges
+```
+
+```{python}
+
+```
+
+```{python}
+sub_points = np.unique(np.concatenate(subp),axis=0).astype(np.float32)
+```
+
+```{python}
+len(sub_points)
+```
+
+```{python}
+# %%time 
+out = elpigraph.computeElasticPrincipalTree(np.array(subp1), 10,
+                                            #InitNodes=400,
+                                            #TrimmingRadius=90,  
+                                            #GrammarOptimization=True,
+                                            MaxSteps=1,
+                                            #InitNodePositions=subp1,
+                                            #InitEdges=edges,
+                                            Lambda=0.001, Mu=0.001,
+                                            #GrammarOrder=['Shrink', 'Grow'],
+                                            MaxNumberOfGraphCandidatesDict={"AddNode2Node":20,"BisectEdge":10,"ShrinkEdge":1}
+                                            #ShowTimer=True,
+                                           )
+```
+
+```{python}
+plt.figure(figsize=(20,20))
+elpigraph.plot.PlotPG(subp1, out[0],
+                      Do_PCA=True, 
+                      show_text=True,DimToPlot=[0,1])
+#plt.axis([50,150, -40,-10])
+```
+
+```{python}
+_=1
+```
+
+```{python}
+#elpigraph.computeElasticPrincipalTree(
+```
+
+```{python}
+
+# #%time new_pg_refit = elpigraph._graph_editing.addPath(xpoints,out[0],69,93,refit_graph=True)
+new_pg = elpigraph.ShiftBranching(points,out[0])
+```
+
+```{python}
+plt.figure(figsize=(20,20))
+
+elpigraph.plot.PlotPG(points, new_pg,)
+```
+
+```{python}
+
+```
+
+```{python}
+_=1
+```
+
+```{python}
+
+```
+
+```{python}
+#elpigraph.plot.PlotPG(points, out[0],show_text=False, DimToPlot=[0,2])
+```
+
+```{python}
+#out[0]
+```
+
+```{python}
+
+```
+
+```{python}
+
+```
+
 # Сохранение
 
 ```{python}
@@ -1269,13 +1453,13 @@ vis.view_graph_as_colored_image(obj.graph, final_image.shape, w);
 # str2tup = lambda x: tuple(map(int, x.split(',')))
 ```
 
-```{python tags=c()}
+```{python}
 # with open('graph_3wk-both1-grn-raw.pic.pickle') as fd:
 #     load_graph = pickle.load(fd)
 
 ```
 
-```{python tags=c()}
+```{python}
 # nx.write_gml(gx_all_occ.copy(), 
 #              'gx_all_{}.gml.gz'.format(os.path.basename(filename)), 
 #              stringizer=tup2str)
