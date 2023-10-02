@@ -6,7 +6,7 @@ jupyter:
       extension: .Rmd
       format_name: rmarkdown
       format_version: '1.2'
-      jupytext_version: 1.14.5
+      jupytext_version: 1.14.4
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -24,6 +24,25 @@ jupyter:
 
 ## Current: 
 Now I'm trying to look a filamentous skeletons of the cells based on the ideas in projected gradient approach, i.e. that if $g(x)$ is our intensity gradient (at some scale $\sigma$), and ${\lambda_i}, {v_i}$ are (sorted $\lambda_1 > \lambda_2, ...$) eigenvalues and eigenvectors of the Hessian (at the same scale $\sigma$), then let $V=[v_2,...,v_d]$ we are searching for $G(x) =  VV^T g(x)= 0$. Because looking just for small values of $G$ might be not what we need, searching for places where $G$ changes its sign would be more efficient (probably).
+
+Была проблема в том, что точки сначала сходились к филаментам, потом вдоль образовавшихся тяжей пытались убежать из некоторых мест, фрагментируя скелет. 
+
+Более-менее рабочее решение заключается в том, чтобы перед расчетом траекторий построить k-NN граф из точек и в векторы, смещающие точки вдоль проекций градиента добавить еще смещение к соседям. Это позволяет "противостоять" векторному полю, если оно пытается растащить точки в разные стороны, оставив пустое место.
+
+### **TODO:** (что дальше нужно попробовать)
+- [ ] Убедиться, что стандартный набор параметров примерно одинаково работает на разных sigma
+- [ ] Чему должно быть равно число соседей для оптимального результата (одинаково для разных сигма)?
+  - [ ] попробовать разное kNN -> сравнить результат
+- [ ] Что можно проконтролировать, меняя density_rad (равновесное расстояние между соседями)?
+  - [ ] Попробовать density_rad = {0, 0.1, 0.5, 1.0} -> что будет отличаться?
+
+- [ ] Можно ли добиться лучшего результата, если сделать процесс двухступенчатым: после первых N~300 итераций остановиться, возможно уменьшить количество точек (см `merge_points()` `density_filter()`), заново перестроить k-NN граф и сделать еще один прогон. Возможно, это позволит уменьшить jitter около точек ветвления и в других местах, где алгоритм изначально не сжимался в узкий тяж.
+  - [ ] поработать с парой `density_filter()` ,`merge_points()` -> улучшайзинг скелета после первого прогона
+  - [ ] Попробовать запустить второй прогон, используя на входе (улучшенные) результаты первого
+- [ ] Сравнить результаты на разных масштабах --> можно ли потом объединить разные скелеты? Например, выбирая точки, для которых данный масштаб является оптимальным?
+  - [ ] Вывести на одном изображении скелеты для набора масштабов (пусть sigma =[1.5, 3, 6, 12])
+- [ ] Подумать, как объединить с предыдущим подходом (пути dijkstra). Возможно, строить пути до ближайшей точки скелета? И отдельно по скелету до сомы? Или другие идеи?
+- [ ] Попробовать применить к другим клеткам
 
 ## Previous:
 In this notebook I introduce that we drop rescaling in Z-axis (but the distances will get screwed up and need to be rescaled).
@@ -569,20 +588,149 @@ def get_multi_vecs_interp(locs, field, order=1):
     locs = np.asarray(locs)
     dims = np.arange(field.shape[-1])
     return np.array([ndi.map_coordinates(field[...,i], locs.T, order=order) for i in dims]).T
+```
 
-def calc_trajectory_multi(field, pts0, n_iter=10, tol=1e-3, verbose=False):
+```{python}
+def project_points(points, stopped=None, img=None, ax=None,
+                   alpha=0.25,
+                   markersize=2,
+                   figsize=(16,16)):
+    if ax is None:
+        fig, ax = plt.subplots(1,1, figsize=figsize)
+        ax.axis('off')
+        plt.tight_layout()
+   
+    if not len(ax.images) and img is not None:
+        ax.imshow(img, cmap='gray')
+    
+    if not len(ax.lines):
+        ax.plot(points[:,2],points[:,1], 'm.',markersize=markersize, 
+                alpha=alpha)
+        if stopped is not None:
+            ax.plot(stopped[:,2],stopped[:,1], 'g.',markersize=1.5*markersize, 
+                    alpha=alpha)
+    else:
+        lh = ax.lines[0]
+        lh.set_data(points[:,2],points[:,1])
+        if stopped is not None:
+            if len(ax.lines) < 2:
+                ax.plot(stopped[:,2],stopped[:,1], 'g.',
+                        markersize=1.5*markersize, alpha=alpha)
+            else:
+                lh = ax.lines[1]
+                lh.set_data(stopped[:,2],stopped[:,1])
+
+    ax.figure.canvas.draw()
+    return ax
+```
+
+```{python}
+def calc_trajectory_basic(field, pts0, n_iter=10, tol=1e-3,
+                          h=0.25,
+                          with_plot=False,
+                          plot_save_pattern=None,
+                          save_interval=10,
+                          gamma = 0.99):
     pts_prev = pts0
-    stopped = []
+    
+    img_proj = final_image.max(0)
+    
+    frozen = np.zeros(len(pts0), bool)
+    stationary_counter = np.zeros(len(pts0), np.uint16)
+    
+    ax = None
+        
+    mult = 1.0
     for i in tqdm(range(n_iter)):
         vec = get_multi_vecs_interp(pts_prev, field)
-        pts = pts_prev + vec
+        vec[frozen] = 0 # don't move points that are already considered converged
+        
+        pts = pts_prev + mult*h*vec
+        
         delta = np.linalg.norm(pts-pts_prev, axis=1)
-        stopped.append(pts[delta < tol])
-        pts = pts[delta > tol]
-        if verbose and not i%25:
-            print(i, len(pts))
+        stop_cond = (delta < tol) 
+        stationary_counter[stop_cond] += 1
+        frozen[stationary_counter > 5] = True
+
+        if with_plot and not i%save_interval:
+            ax = project_points(pts[~frozen], pts[frozen], img=img_proj, ax=ax)
+            if plot_save_pattern is not None:
+                ax.figure.savefig(plot_save_pattern.format(i=i))
         pts_prev = pts
-    return np.concatenate([pts, np.concatenate(stopped)])
+        mult *= gamma
+    return pts
+```
+
+```{python}
+def calc_trajectory_multi2(field, pts0, n_iter=10, tol=1e-3, 
+                          h=0.25, 
+                          with_plot=False,
+                          plot_save_pattern=None,
+                          save_interval=10,
+                          gamma = 0.99,
+                          knn=6,
+                          agg_alpha=0.1, 
+                          density_rad = 0.1,
+                          verbose=False):
+    pts_prev = pts0
+    stopped = []
+    img_proj = final_image.max(0)
+    ax = None
+    
+    mult = 1.0 # this is a multiplier used to attenuate force field over time
+    frozen = np.zeros(len(pts0), bool)
+    stationary_counter = np.zeros(len(pts0), np.uint16)
+    vec_prev = None
+    
+    
+    # establish nearest-neighbors at the beginning
+    # number of neighbors could be a parameter
+    kdt0 = sp.spatial.KDTree(pts_prev)
+    nn_dists, nn_inds = kdt0.query(pts_prev, knn)
+    
+    for i in tqdm(range(n_iter)):
+        vec = get_multi_vecs_interp(pts_prev, field)
+        
+        
+        # -- this is what I'd do if I wanted new NN graph at each iteration
+        #kdt1 = sp.spatial.KDTree(pts_prev)
+        #nn1 = kdt1.query_ball_point(pts_prev, density_rad, return_length=True)
+        
+        # Trying to keep old-mates close:
+        agg_force = (pts_prev[:,None,:] - pts_prev[nn_inds]).sum(1) - density_rad
+        
+        vec = vec - agg_alpha*agg_force
+        vec[frozen] = 0 # don't move points that are already considered converged
+        
+        # simple adams-bashforth scheme
+        if vec_prev is None:
+            pts = pts_prev + h*mult*vec      
+        else:
+            pts = pts_prev + h*mult*(1.5*vec - 0.5*vec_prev)
+        
+        
+        # count points that haven't moved much for 5 iterations as converged
+        delta = np.linalg.norm(pts-pts_prev, axis=1)
+        stationary_counter[delta < tol] += 1
+        frozen[stationary_counter > 5] = True
+        
+        # make a  plot if needed
+        if with_plot and not i%save_interval:
+            ax = project_points(pts[~frozen], pts[frozen], img=img_proj, ax=ax)
+            fig = ax.figure
+            if plot_save_pattern is not None:
+                fig.savefig(plot_save_pattern.format(i=i))
+
+        # switch  states
+        pts_prev = pts
+        vec_prev = vec
+        mult *= gamma
+        
+        # this condition can be made softer, i.e. break if 1% of points
+        # remains unfrozen
+        if np.all(frozen):
+            break
+    return pts
 ```
 
 ```{python}
@@ -590,11 +738,25 @@ def calc_trajectory_multi(field, pts0, n_iter=10, tol=1e-3, verbose=False):
 ```
 
 ```{python}
+# vec = get_multi_vecs_interp(pts, VVg)
+# pts2 = pts + vec
+# vec2 = get_multi_vecs_interp(pts2,VVg)
+```
+
+```{python}
 
 ```
 
 ```{python}
-sigma = 6
+#vec.shape, vec2.shape
+```
+
+```{python}
+
+```
+
+```{python}
+sigma = 2
 ```
 
 ```{python}
@@ -623,7 +785,7 @@ astro.morpho.eigh = np.linalg.eigh
 # %time H,g  = hessian_by_dog(final_image, sigma=(sigma/scale[0],sigma,sigma), rel_scale=scale, \
 #                             return_gradient=True) # RC order by default
 
-g = np.stack(g,axis=3)
+g = sigma*np.stack(g,axis=3)
 ```
 
 ```{python}
@@ -635,7 +797,7 @@ g = np.stack(g,axis=3)
 ```
 
 ```{python}
-threshold = threshold_li(sato[sato>0])#*sigma**0.5
+threshold = threshold_li(sato[sato>0])*sigma**0.5
 mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
 ```
 
@@ -644,9 +806,14 @@ mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
 
 # sato1, Vf1 = astro.morpho.sato3d(final_image, 
 #                                  (sigma/scale[0], sigma,sigma), 
-#                                  hessian_variant='dog', 
+#                                  #hessian_variant='dog', 
 #                                  do_brightness_correction=False, 
 #                                  return_vectors=True)
+```
+
+```{python}
+# Vf = Vf1
+# sato = sato1
 ```
 
 ```{python}
@@ -694,9 +861,10 @@ pts = np.array(np.where(mask)).T
 ```
 
 ```{python}
-VVg_clipped = np.copy(VVg)
-
-VVg_clipped[VVg_mag > 1] /= VVg_mag[VVg_mag>1][:,None]
+pth = np.percentile(VVg_mag, 99)
+VVg_clipped = VVg/pth
+#cond = np.linalg.norm(VVg_clipped,axis=-1)>1
+VVg_clipped[VVg_mag>pth] /= VVg_mag[VVg_mag>pth][:,None]/pth
 ```
 
 ```{python}
@@ -704,13 +872,145 @@ VVg_clipped[VVg_mag > 1] /= VVg_mag[VVg_mag>1][:,None]
 ```
 
 ```{python}
-# %time endpoints = calc_trajectory_multi(VVg_clipped/4, pts, 100, tol=0.005, verbose=False)
+# %matplotlib qt
+```
+
+```{python}
+kplane=40
+show_field2d(VVg[kplane][...,1:]/VVg_mag.max()*mask[kplane][...,None], 
+             final_image[kplane], scale=15, weights=sato[kplane])
+```
+
+```{python}
+kplane=40
+show_field2d(VVg_clipped[kplane][...,1:], 
+             final_image[kplane], scale=50, weights=sato[kplane])
+```
+
+```{python}
+project_points(pts, img=final_image.max(0))
+ax = plt.gca()
+ax.figure
+```
+
+```{python}
+plt.close('all')
+```
+
+```{python}
+domain_mask3d.shape
+```
+
+```{python}
+#napari.view_image((~mask)^domain_mask3d)
+```
+
+```{python}
+#VVg_mag2 = np.linalg.norm(VVg_clipped,axis=-1)
+VVg_mag2 = VVg_mag/VVg_mag.max()
+```
+
+```{python}
+plt.figure()
+plt.hist(VVg_mag[mask],100,density=True);
+plt.hist(VVg_mag[mask^domain_mask3d],100,density=True, histtype='step');
+plt.title('sigma={}'.format(sigma))
+plt.gcf()
+```
+
+```{python}
+from numpy.linalg import norm
+```
+
+```{python}
+plt.figure()
+plt.hist(norm(VVg_clipped[mask],axis=-1),100,density=True,range=(0.,0.99));
+plt.hist(norm(VVg_clipped[mask^domain_mask3d],axis=-1),100,density=True,
+         range=(0,0.99),
+         histtype='step');
+plt.gcf()
+```
+
+```{python}
+th_g = threshold_li(VVg_mag[mask^domain_mask3d])
+th_g
+```
+
+```{python}
+#np.percentile(VVg_mag[mask], 50)
+```
+
+```{python}
+#VVg[VVg_mag2 < th_g] = 0
+```
+
+```{python}
+plt.close('all')
+```
+
+```{python}
+# #rm figures/filaments-*.png
+```
+
+```{python}
+# %%time 
+endpoints0 = calc_trajectory_basic(VVg_clipped,
+                                  pts, 
+                                  n_iter=500, 
+                                  tol=0.001, 
+                                  with_plot=True,
+                                  save_interval=4,
+                                  gamma=1.0,
+                                  plot_save_pattern='figures/filaments-{i:04d}.png')
+```
+
+```{python}
+# #rm figures/filaments-*.png
+```
+
+```{python}
+#0.996**1000
+```
+
+```{python}
+# %%time 
+endpoints = calc_trajectory_multi2(VVg_clipped,
+                                   pts, 
+                                   n_iter=500, 
+                                   tol=0.001, 
+                                   with_plot=True,
+                                   save_interval=1,
+                                   gamma=1.0,
+                                   knn=6,
+                                   agg_alpha=0.25,
+                                   plot_save_pattern='figures/filaments2-{i:04d}.png')
 ```
 
 **ideas for future**
 - [ ] utilize *weight* of points and grow it by merging
 - [ ] add *springs* between points to stop them leaving nice spots. At each iteration make graph of 
       nearby points, add vector that tries to move the points to local mean value?
+
+```{python}
+plt.close('all')
+```
+
+```{python}
+fig = plt.figure(figsize=(9,9))
+ax = plt.gca()
+ax.axis('off')
+project_points(endpoints, img=final_image.max(0), ax=ax)
+plt.tight_layout()
+fig
+```
+
+```{python}
+plt.close('all')
+```
+
+```{python}
+
+```
 
 ```{python}
 def density_filter(points, radius=1, min_neighbors=2, with_hist_plot=False):
@@ -725,59 +1025,59 @@ def merge_points(points, radius=0.75, niters=1, decimals=1):
     for i in tqdm(range(niters)):
         kdt = sp.spatial.KDTree(points)
         nn = kdt.query_ball_point(points, radius)
-        points = np.array([points[xi].mean(0) for xi in nn if len(nn)])
-    binned_points = np.unique(points.round(decimals), axis=0)
+        points = np.array([points[xi].mean(0) if len(xi) else p 
+                           for p,xi in zip(points,nn)])
+        #points = points[nn].mean(axis=1)
+        binned_points = np.unique(points.round(decimals), axis=0)
     return binned_points
 ```
 
 ```{python}
-skel_points =  merge_points(endpoints, radius=0.5, niters=3)
-skel_points2 = density_filter(skel_points,with_hist_plot=True)
+# #kdt.query_ball_point?
 ```
 
 ```{python}
-len(skel_points)
+ridge_points =  merge_points(endpoints, radius=0.75, niters=10)
+ridge_points0 = density_filter(endpoints, radius=3, with_hist_plot=True)
+ridge_points2 = density_filter(ridge_points, radius=3, with_hist_plot=True)
 ```
 
 ```{python}
-#skel_points = density_filter(endpoints, 0.5, 4, with_hist_plot=True)
-#plt.gcf()
+len(endpoints), len(ridge_points), len(ridge_points2)
 ```
 
 ```{python}
-
+ax = project_points(ridge_points, img=final_image.max(0), ax=None, 
+                    markersize=5,
+                    alpha=0.75)
+ax.figure
 ```
 
 ```{python}
-
+ax = project_points(ridge_points0, 
+                    img=final_image.max(0), ax=None, 
+                    markersize=4,
+                    alpha=0.5)
+ax.figure
 ```
 
 ```{python}
-# kdt_skel = sp.spatial.KDTree(skel_points)
-# x = kdt_skel.query_ball_point(skel_points, 0.75)
-# binned_points = np.array([skel_points[xi].mean(0) for xi in tqdm(x)]).round(1)
-# skel_points2a = np.unique(binned_points, axis=0)
-```
-
-```{python}
-#skel_points2b = density_filter(skel_points2a)
-```
-
-```{python}
-#len(skel_points2a), len(skel_points2b)
-```
-
-```{python}
-#len(skel_points), len(skel_points2a), len(np.unique(np.round(skel_points, 1), axis=0))
+ax = project_points(ridge_points2, 
+                    img=final_image.max(0), ax=None, 
+                    markersize=5,
+                    alpha=0.75)
+ax.figure
 ```
 
 ```{python}
 w = napari.view_image(final_image)
 w.add_points(endpoints, size=0.5, opacity=0.25, edge_color='m', face_color='red')
-w.add_points(skel_points, size=0.5, opacity=0.5, edge_color='blue', face_color='blue')
-w.add_points(skel_points2, size=0.5, opacity=1, edge_color='green', face_color='green')
+w.add_points(ridge_points, size=1, opacity=0.75, edge_color='blue', face_color='blue')
+w.add_points(ridge_points2, size=1, opacity=1, edge_color='green', face_color='green')
 #w.add_points(endpoints2, size=0.5, opacity=1, edge_color='red', face_color='red')
 ```
+
+---
 
 ```{python}
 def find_ridge_points(image, sigma, niter=100, tol=5e-3):
@@ -786,7 +1086,10 @@ def find_ridge_points(image, sigma, niter=100, tol=5e-3):
                           rel_scale=scale,
                           return_gradient=True) # RC order by default
 
-    g = np.stack(g,axis=3)
+    # weight by sigma to keep vectors in approximately the same range 
+    # for different spatial scales
+    g = sigma*np.stack(g,axis=3) 
+
     lams,Vf = hessian_eigen_decomp(H)
     
     sato = barebone_sato(lams)
@@ -798,15 +1101,19 @@ def find_ridge_points(image, sigma, niter=100, tol=5e-3):
     del VV
     
     VVg_mag = np.linalg.norm(VVg,axis=-1)
-    VVg_mag_max = np.max(VVg_mag)
     
-    VVg_clipped = np.copy(VVg)
-    VVg_clipped[VVg_mag > 1] /= VVg_mag[VVg_mag>1][:,None]
+    pth = np.percentile(VVg_mag, 99)
+    VVg_clipped = VVg/pth
+    VVg_clipped[VVg_mag>pth] /= VVg_mag[VVg_mag>pth][:,None]/pth
     
     pts = np.array(np.where(mask)).T
-    endpoints = calc_trajectory_multi(VVg_clipped/4, pts, niter, tol=tol, verbose=False)
-    
-    
+    endpoints = calc_trajectory_multi2(VVg_clipped,
+                                       pts, 
+                                       n_iter=niter, 
+                                       tol=0.001, 
+                                       h=0.25, 
+                                       gamma=0.99,
+                                       agg_alpha=0.5)
     merged = merge_points(endpoints, radius=0.5,  niters=1)
     return density_filter(merged, radius=1.5, min_neighbors=2)
 ```
@@ -960,2958 +1267,6 @@ plt.title('new')
 ```
 
 ------------------------
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-# %%time 
-
-sato, Vf = astro.morpho.sato3d(final_image, (sigma/scale[0], sigma,sigma), hessian_variant='dog', 
-                               do_brightness_correction=False, 
-                               return_vectors=True)
-```
-
-```{python}
-threshold = threshold_li(sato[sato>0])#*sigma**0.5
-mask = remove_small_objects(sato > threshold, min_size=int(sigma*64))
-```
-
-```{python}
-w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
-w.add_image(sato, blending='additive', colormap='magenta')
-w.add_image(mask, blending='additive', colormap='cyan')
-```
-
-```{python}
-Vf.shape
-```
-
-```{python}
-image_smooth = ndi.gaussian_filter(final_image, (sigma/scale[0], sigma,  sigma))
-g = np.gradient(image_smooth)
-g[0]/=scale[0]**2
-g = np.stack(g,axis=3)
-```
-
-```{python}
-g.shape
-```
-
-```{python}
-plt.figure();
-plt.imshow(g[38,...,0])
-```
-
-```{python}
-plt.figure();
-plt.imshow(g[38,...,1])
-```
-
-```{python}
-plt.figure();
-plt.imshow(g[38,...,2])
-```
-
-```{python}
-# #%time H = skf.hessian_matrix(final_image, sigma, use_gaussian_derivatives=True, order='rc')
-# #%time H = skf.hessian_matrix(final_image, sigma, order='rc')
-# %time H = morpho.hessian_by_dog(final_image, sigma) # RC order by default
-```
-
-```{python}
-plt.figure();
-plt.imshow(H[0][32])
-```
-
-```{python}
-plt.figure();
-plt.imshow(H[1][32])
-```
-
-```{python}
-plt.figure();
-plt.imshow(H[2][32])
-```
-
-```{python}
-plt.close('all')
-```
-
-```{python}
-import skimage
-```
-
-```{python}
-skimage.__version__
-```
-
-```{python}
-
-```
-
-```{python}
-# %time lam,v = hessian_eigen_decomp(H)
-lam = lam[...,::-1]
-v = v[...,::-1]
-```
-
-```{python}
-loc = (40,150,133)
-```
-
-```{python}
-lam[loc]
-```
-
-```{python}
-plt.figure()
-plt.imshow(image_smooth[40],cmap='gray')
-plt.axhline(loc[1], color='r')
-plt.axvline(loc[2], color='r')
-plt.gcf()
-```
-
-### in 2D
-
-```{python}
-loc
-```
-
-```{python}
-img2d = final_image[39:41].mean(0)
-plt.figure()
-plt.imshow(img2d)
-plt.gcf()
-```
-
-```{python}
-img2d_smooth = ndi.gaussian_filter(img2d, sigma)
-```
-
-```{python}
-g2d = np.gradient(img2d_smooth)
-g2d = np.dstack(g2d)
-g2d.shape
-```
-
-```{python}
-#H2d = skf.hessian_matrix(img2d, sigma, use_gaussian_derivatives=False, order='rc')
-H2d1 = morpho.hessian_by_dog(img2d, sigma)
-H2d = skf.hessian_matrix(img2d, sigma,  order='rc')
-H2da = skf.hessian_matrix(img2d, sigma,  order='xy')
-```
-
-```{python}
-from imfun import ui
-```
-
-```{python}
-ui.group_maps([g2d[...,0], g2d[...,1]], figscale=5, colorbar=False)
-plt.gcf()
-```
-
-```{python}
-ui.group_maps(H2d1, figscale=5, colorbar=False)
-#plt.gcf()
-```
-
-```{python}
-
-ui.group_maps(H2d, figscale=5, colorbar=False)
-#plt.gcf()
-```
-
-```{python}
-
-ui.group_maps(H2da,figscale=5, colorbar=False)
-#plt.gcf()
-```
-
-```{python}
-
-```
-
-```{python}
-plt.close('all')
-```
-
-```{python}
-import tifffile
-```
-
-```{python}
-tifffile.imwrite('/home/brazhe/yadisk/dev/notebooks/astrocyte-morphology-and-networks//test-astro1.tif', img2d)
-```
-
-```{python}
-# %time lam2d,v2d = hessian_eigen_decomp(H2d1)
-lam2d = lam2d[...,::-1]
-Vf2d = v2d[...,::-1]
-```
-
-```{python}
-vi = Vf2d[...,1:][loc[1:]]
-vi
-```
-
-```{python}
-vi @ vi.T
-```
-
-```{python}
-vi @ vi.T @ g2d[loc[1:]]
-```
-
-```{python}
-#VVg2d[loc[1:]]
-```
-
-```{python}
-VV2d = np.einsum('...ij,...jk->...ik', 
-                 Vf2d[...,1:], 
-                 np.einsum('...ji', Vf2d[...,1:]))
-```
-
-```{python}
-# %time VVg2d = np.einsum('...ij,...j->...i', VV2d, g2d)
-```
-
-```{python}
-lam2d[loc[1:]]
-```
-
-```{python}
-g[loc], g2d[loc[1:]]
-```
-
-```{python}
-#VVg[loc], VVg2d[loc[1:]]
-```
-
-```{python}
-def percentile_rescale(arr, plow=1, phigh=99):
-    vmin,vmax = np.percentile(arr, (plow, phigh))
-    if vmin == vmax:
-        return np.zeros_like(arr)
-    else:
-        return np.clip((arr-vmin)/(vmax-vmin),0,1)
-```
-
-```{python}
-def show_field2d(vfield, background=None, crop=None, weights=None, scale=25):
-    
-    
-    fig, ax = plt.subplots(1,1,figsize=(9,9)); 
-    
-    if crop is None:
-        crop=(slice(None,),slice(None))
-    
-    if background is not None:
-        ax.imshow(background[crop], cmap='gray')
-    
-    V = -vfield[crop][...,0]# ROW (Y) directions; negative sign due to 'origin="upper" by default in imshow'
-    U = vfield[crop][...,1]
-        
-    ax.quiver(U,V, weights[crop], scale=scale, cmap='inferno')
-    return fig
-```
-
-```{python}
-# %matplotlib qt
-```
-
-```{python}
-show_field2d(VVg2d/np.linalg.norm(VVg2d,axis=-1).max(), img2d, scale=10, weights=percentile_rescale(np.abs(lam2d[...,1])))
-```
-
-```{python}
-# plt.figure(figsize=(9,9)); 
-# #crop = (slice(175,325), slice(275,425))
-# crop=(slice(None,),slice(None))
-
-# plt.imshow(img2d[crop],cmap='gray')
-
-# lamc = lam2d[crop]
-
-# weights = percentile_rescale(np.abs(lam2d[...,1]))
-
-# #r = Rectangle((75,75),50,50,color='lightgreen',fill=False)
-# #gca().add_patch(r)
-
-# # V = v[crop][...,0,i] # X directions
-# # U = v[crop][...,1,i] # Y directions
-
-# V = -VVg2d[crop][...,0] # ROW (Y) directions; negative sign due to 'origin="upper" by default in imshow'
-# U = VVg2d[crop][...,1] # COL (X) directions
-
-# #axis((0,150,0,150))
-# #quiver(U*weights[crop],V*weights[crop],weights[crop],scale=25,cmap='inferno')
-# plt.quiver(U*0.1,V*0.1,weights,scale=50,cmap='inferno')
-# #quiver(U*weights,V*weights,color='m', scale=100,)
-# plt.axis('off')
-# plt.tight_layout()
-# plt.gcf()
-```
-
-```{python}
-#Vf[...,1:] 
-```
-
-```{python}
-
-```
-
-```{python}
-# # %%time 
-# VV1 = np.zeros(Vf.shape)
-# VVg1 = np.zeros(g.shape)
-# sh = final_image.shape
-# for i in tqdm(range(sh[0])):
-#     for j in range(sh[1]):
-#         for k in range(sh[2]):
-#             vij = Vf[i,j,k,:,1:]
-#             VV1[i,j,k] = vij @ vij.T
-#             VVg1[i,j,k] = vij @ vij.T @ g[i,j,k]
-```
-
-```{python}
-#del VV1, VVg1
-```
-
-```{python}
-Vf[...,1:].shape
-```
-
-```{python}
-a = np.arange(6).reshape(3,2)
-a
-```
-
-```{python}
-a @ a.T
-```
-
-```{python}
-np.einsum('ij,jk->ik', a, a.T)
-```
-
-```{python}
-np.einsum('ji',a)
-```
-
-```{python}
-np.einsum('ij,jk->ik', a, np.einsum('ji',a))
-```
-
-```{python}
-# #%time VV = np.einsum('...ij,...jk->...ik', Vf[...,1:], np.einsum('...ji', Vf[...,1:]))
-# %time VV = np.einsum('...ij,...jk', Vf[...,1:], np.einsum('...ji', Vf[...,1:]))
-```
-
-```{python}
-
-```
-
-```{python}
-# %time VVg = np.einsum('...ij,...j->...i', VV, g)
-```
-
-```{python}
-VVg.shape
-```
-
-```{python}
-import xarray as xr
-```
-
-```{python}
-VVg_da = xr.DataArray(VVg, dims=('z','r','c','f'))
-```
-
-```{python}
-# %time VVg_da.interp(z=38, r=154.3, c=133.4)
-```
-
-```{python}
-# %time VVg_da.interp(z=38, r=154.0, c=133.0)
-```
-
-```{python}
-# %time VVg_da.interp(z=np.linspace(37,39,10), r=154.0, c=133.0)
-```
-
-```{python}
-# %time VVg_da.interp(z=38.8, r=154.3, c=133.2)
-```
-
-```{python}
-# %time VVg[38,154,133]
-```
-
-```{python}
-# %%time
-x = \
-(ndi.map_coordinates(VVg[...,0],coordinates=np.array([38.8,154.3,133.2])[:,None], order=1),
- ndi.map_coordinates(VVg[...,1],coordinates=np.array([38.8,154.3,133.2])[:,None], order=1),
- ndi.map_coordinates(VVg[...,2],coordinates=np.array([38.8,154.3,133.2])[:,None], order=1))
-      
-x
-```
-
-```{python}
-# %time ndi.map_coordinates(VVg,coordinates=np.array([[38.8,154.3,133.2, i] for i in range(3)]).T, order=1)
-```
-
-```{python}
-np.array([[38.8,154.3,133.2, i] for i in range(3)]).T
-```
-
-```{python}
-np.repeat([38.8,154.3,133.2],3).reshape(-1,3)
-```
-
-```{python}
-np.vstack([np.repeat([38.8,154.3,133.2],3).reshape(-1,3), np.arange(3)])
-```
-
-```{python}
-
-def get_vec_interp(loc, field):
-    ndim = len(field.shape)
-    dims = np.arange(field.shape[-1])
-    tloc = tuple(loc)
-    coords = np.array([tloc + (i,) for i in dims],np.float32).T
-    return ndi.map_coordinates(field, coords, order=1)
-
-
-
-def calc_trajectory(field, x0, n_iter=10, keep_trace=True):
-    trace = [x0]
-    x = x0
-    for i in range(n_iter):
-        vec = get_vec_interp(x, field)
-        #print(vec)
-        x = x + vec
-        if keep_trace:
-            trace.append(x)
-    return np.array(trace) if keep_trace else x
-
-
-```
-
-```{python}
-def get_multi_vecs_interp(locs, field):
-    locs = np.asarray(locs)
-    dims = np.arange(field.shape[-1])
-    return np.array([ndi.map_coordinates(field[...,i], locs.T) for i in dims]).T
-
-def calc_trajectory_multi(field, pts0, n_iter=10, tol=1e-3, verbose=False):
-    pts_prev = pts0
-    stopped = []
-    for i in tqdm(range(n_iter)):
-        if len(pts_prev) > 20000:
-            vec = get_multi_vecs_interp(pts_prev, field)
-        else:
-            vec = np.array([get_vec_interp(loc, field) for loc in pts_prev])
-        pts = pts_prev + vec
-        delta = np.linalg.norm(pts-pts_prev, axis=1)
-        stopped.append(pts[delta < tol])
-        pts = pts[delta > tol]
-        if verbose and not i%25:
-            print(i, len(pts))
-        pts_prev = pts
-    return np.concatenate([pts, np.concatenate(stopped)])
-```
-
-```{python}
-VVg_mag = np.linalg.norm(VVg,axis=-1)
-VVg_sign = np.sign(np.sum(VVg,axis=-1))
-VVg_mag_max = np.max(VVg_mag)
-```
-
-```{python}
-# %time get_vec_interp(np.array([38.8,154.3,133.2]), VVg)
-```
-
-```{python}
-loc = (38, 146,123)
-```
-
-```{python}
-# %time traj = calc_trajectory(VVg/VVg_mag_max, loc, 50)
-```
-
-```{python}
-# #napari.Viewer.add_tracks?
-```
-
-```{python}
-w = napari.view_image(final_image)
-w.add_shapes(traj, edge_width=0.5, edge_color=np.array((1,0,0)), shape_type='path')
-```
-
-```{python}
-pts = np.array(np.where(mask)).T
-```
-
-```{python}
-ptsr = np.random.permutation(pts)[:1000]
-```
-
-```{python}
-ptsr.T.shape
-```
-
-```{python}
-# %time x = get_multi_vecs_interp(pts[:40000], VVg).T
-```
-
-```{python}
-x.shape
-```
-
-```{python}
-# %time y = np.array([get_vec_interp(loc, VVg) for loc in tqdm(pts[:40000])])
-```
-
-```{python}
-y.shape
-```
-
-```{python}
-#endpoints = [calc_trajectory(VVg/VVg_mag_max, p, 50, False) for p in tqdm(pts)]
-```
-
-```{python}
-endpoints = calc_trajectory_multi(VVg/VVg_mag_max/2, pts, 1000, tol=0.001, verbose=True)
-```
-
-```{python}
-import scipy as sp
-```
-
-```{python}
-# %time kdt = sp.spatial.KDTree(endpoints)
-```
-
-```{python}
-# %time x = kdt.query_ball_point(endpoints, 0.5, return_length=True)
-```
-
-```{python}
-plt.close('all')
-plt.hist(x, 200);
-plt.gcf()
-```
-
-```{python}
-len(x), len(endpoints)
-```
-
-```{python}
-np.min(x), np.max(x)
-```
-
-```{python}
-skel_points = endpoints[x > 4]
-```
-
-```{python}
-#y = np.digitize(skel_points, )
-```
-
-```{python}
-kdt_skel = sp.spatial.KDTree(skel_points)
-```
-
-```{python}
-x = kdt_skel.query_ball_point(skel_points, 0.75)
-```
-
-```{python}
-binned_points = np.array([skel_points[xi].mean(0) for xi in tqdm(x)]).round(1)
-```
-
-```{python}
-#skel_points2 = np.round(skel_points, decimals=0)
-skel_points2a = np.unique(binned_points, axis=0)
-```
-
-```{python}
-len(skel_points), len(skel_points2a), len(np.unique(np.round(skel_points, 1), axis=0))
-```
-
-```{python}
-#endpoints2 = calc_trajectory_multi(VVg/VVg_mag_max/2, skel_points2a, 1000)
-```
-
-```{python}
-len(skel_points)
-```
-
-```{python}
-w = napari.view_image(final_image)
-w.add_points(skel_points, size=0.5, opacity=0.5, edge_color='blue', face_color='blue')
-#w.add_points(endpoints, size=0.5, opacity=0.5, edge_color='red', face_color='red')
-w.add_points(skel_points2a, size=0.5, opacity=1, edge_color='green', face_color='green')
-w.add_points(endpoints2, size=0.5, opacity=1, edge_color='red', face_color='red')
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-#scipy.interpolate.interpn()
-```
-
-```{python}
-vi = Vf[loc[0],loc[1], loc[2], :, 1:]
-vi
-```
-
-```{python}
-vi @ vi.T
-```
-
-```{python}
-#np.linalg.norm(vi @ vi.T,axis=0)
-```
-
-```{python}
-lam[loc]
-```
-
-```{python}
-vi @ vi.T @ g[loc]
-```
-
-```{python}
-VVg[loc]
-```
-
-```{python}
-g[loc]
-```
-
-```{python}
-VV.shape, VVg.shape
-```
-
-```{python}
-imgx=image_smooth[40]
-```
-
-```{python}
-#V = VVg[40][...,1]
-#V.shape
-```
-
-```{python}
-# %matplotlib qt
-```
-
-```{python}
-VVg_mag = np.linalg.norm(VVg,axis=-1)
-VVg_sign = np.sign(np.sum(VVg,axis=-1))
-VVg_mag_max = np.max(VVg_mag)
-```
-
-```{python}
-show_field2d(VVg[40][...,1:]/VVg_mag.max(), final_image[40], scale=10, weights=sato[40])
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-loc
-```
-
-```{python}
-plt.figure()
-plt.imshow(final_image[:,:,122], cmap='gray')
-plt.gcf()
-```
-
-```{python}
-#plane_slx = (slice(None), slice(None), )
-show_field2d(VVg[:,:,122][...,:2]/10, final_image[:,:,122], weights=sato[:,:,122])
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-show_field2d(VVg[:,150,:][...,(0,2)]/10, final_image[:,150,:], weights=sato[:,150,:])
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-plt.gcf()
-```
-
-```{python}
-del VV
-```
-
-```{python}
-VVg_mag_max = np.max(VVg_mag)
-```
-
-```{python}
-w = napari.view_image(final_image, ndisplay=3, opacity=0.5, scale=(zoom, 1,1))
-w.add_image(mask*sato, blending='additive', colormap='magenta', scale=(zoom, 1,1))
-w.add_image(mask*np.exp(-VVg_mag), blending='additive', colormap='inferno',scale=(zoom, 1,1))
-#w.add_image(VVg_sign, blending='additive', colormap='bwr')
-#w.add_image(mask, blending='additive', colormap='cyan')
-```
-
-```{python}
-x = VVg[38, 183:186, 155:158]
-x
-```
-
-```{python}
-x.shape
-```
-
-```{python}
-x1 = x.reshape(-1,3)[:,1:]
-x1
-```
-
-```{python}
-plt.figure(); 
-
-plt.plot(x1[:,0], x1[:,1], '.')
-```
-
-```{python}
-#loc2 = (184, 156)
-#loc2 = (95,90)
-loc2 = (162, 183)
-#loc2 = (203, 216)
-```
-
-```{python}
-x2 = VVg2d[loc2[0]-2:loc2[0]+3, loc2[1]-2:loc2[1]+3].reshape(-1,2)
-x2
-```
-
-```{python}
-plt.figure(); 
-
-plt.plot(x2[:,0], x2[:,1], '.')
-plt.axhline(0, color='gray')
-plt.axvline(0, color='gray')
-plt.gcf()
-```
-
-```{python}
-u,s,vh = np.linalg.svd(x2)
-```
-
-```{python}
-min(u[:,0]), max(u[:,0]), np.argmin(u[:,0])
-```
-
-```{python}
-vh
-```
-
-```{python}
-plt.figure()
-plt.imshow(x2[:,0].reshape(5,5), cmap='bwr', interpolation='nearest')
-
-plt.gcf()
-```
-
-```{python}
-plt.figure()
-plt.imshow(x2[:,1].reshape(5,5), cmap='bwr', interpolation='nearest')
-plt.gcf()
-```
-
-```{python}
-plt.figure()
-plt.imshow(u[:,0].reshape(5,5), cmap='bwr', interpolation='nearest')
-plt.gcf()
-```
-
-```{python}
-plt.figure(); 
-
-#plt.plot(sorted(u[:,0]), '.')
-plt.plot(u[:,0], '.')
-plt.axhline(0, color='gray')
-plt.axvline(0, color='gray')
-```
-
-```{python}
-np.mean(u[:,0])
-```
-
-```{python}
-np.sum(u[:,0] >= 0), np.sum(u[:,0] <= 0)
-```
-
-```{python}
-s[0]/(s[1] + s[0])
-```
-
-```{python}
-len(u)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-filament_contrast = sato*np.exp(-VVg_mag)
-th = threshold_li(filament_contrast[mask])
-t
-```
-
-```{python}
-plt.figure()
-plt.hist(VVg_mag[mask], 200, density=True);
-plt.hist(VVg_mag[mask*(filament_contrast>0.5)], 100, density=True, histtype='step');
-plt.gcf()
-```
-
-```{python}
-plt.figure()
-plt.hist(np.ravel(filament_contrast[mask]), 200, density=True);
-
-plt.gcf()
-```
-
-```{python}
-napari.view_image(filament_contrast*mask*(VVg_mag < 0.5))
-```
-
-```{python}
-
-```
-
-```{python}
-# out2 = np.zeros(final_image.shape, bool)
-
-# #out_sign = np.sign(np.sum(out,-1))
-
-# for r in tqdm(range(1,sh[0]-1)):
-#     for c in range(1,sh[1]-1):
-#         for d in range(1,sh[2]-1):
-#             #s = out_sign[r,c,d]
-#             for i in range(r-1,r+2):
-#                 for j in range(c-1,c+2):
-#                     for k in range(d-1,d+2):
-#                         #if s != out_sign[i,j]:
-#                         if VVg[r,c,d] @ VVg[i,j,k] < 0:
-#                             out2[r,c,d] = True
-#                             break
-#                     else:
-#                         continue
-```
-
-```{python}
-crops = prep_crops()
-```
-
-```{python}
-len(crops)
-```
-
-```{python}
-VVg.shape
-```
-
-```{python}
-#c1,c2
-```
-
-```{python}
-out2a = np.zeros(final_image.shape, np.uint8)
-for crop, acrop in tqdm(crops):
-    dotp = np.einsum('...ij,...ij->...i', VVg[crop],VVg[acrop] )
-    #print(out2a.shape, dotp.shape, out2a[crop].shape)
-    out2a[crop][dotp<0] += 1
-```
-
-```{python}
-peaksx1 = morpho.peaks_in_unfoldings(image_smooth, mask)
-peaksx2 = morpho.peaks_in_unfoldings(sato, mask)
-```
-
-```{python}
-#domain_mask.shape
-```
-
-```{python}
-w = napari.view_image(final_image, ndisplay=3, opacity=0.5)
-w.add_image(sato, blending='additive', colormap='magenta')
-w.add_image(, blending='additive', colormap='green')
-w.add_image(peaksx1>1, blending='additive', colormap='red')
-#w.add_image(mask*out2a, blending='additive', colormap='green')
-#w.add_image(out2a.astype(np.float32), blending='additive', colormap='red')
-#w.add_image(mask, blending='additive', colormap='cyan')
-```
-
-```{python}
-
-```
-
-```{python}
-#th = threshold_li()
-```
-
-```{python}
-out2a.max(), out2a.min()
-```
-
-**Didn't touch anything below**
-
----------------------
-
-
-
-# Расчет матрицы Гессе для различных сигм
-
-```{python}
-if HANDY:
-    #sigmas = 2**np.arange(-1, 3, 0.5)
-    sigmas = 2**np.arange(0, 4, 0.5)
-```
-
-```{python}
-scale
-```
-
-```{python}
-sigmas
-```
-
-```{python}
-id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
-sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
-```
-
-```{python}
-sato_coll = {}
-Vf_coll = {}
-```
-
-```{python}
-
-#host
-```
-
-```{python}
-astro.morpho.eigh = np.linalg.eigh # у меня падает Tf, который с cuda. Так медленнее, но не падает (delta)
-#astro.morpho.eigh = astro.morpho.tf.linalg.eigh
-```
-
-```{python}
-for sigma in tqdm(sigmas):
-    #astro.morpho.sato3d is newer and uses tensorflow (if it's installed)
-    #optimally, the two variants of sato3d should be merged
-    sato, Vf = astro.morpho.sato3d(final_image, (sigma/scale[0], sigma,sigma), hessian_variant='gradient_of_smoothed', do_brightness_correction=False, return_vectors=True)
-    sato_coll[sigma] = (sato*sigma**2)*(final_image > 0)
-    # Zero'th eigenvector is now the one corresponding to the largest eigenvalue 
-    # (due to eigenvalue sorting in Sato3d)
-    Vf_coll[sigma] = Vf[...,0][...,::-1] # z, r, c
-```
-
-```{python}
-lengths_coll = {sigma: astro.enh.percentile_rescale(sato)**0.5 for sigma, sato in sato_coll.items()}
-vectors_coll = {}
-```
-
-```{python}
-for sigma in Vf_coll:
-    Vfx = Vf_coll[sigma]
-    #V = Vfx[..., 0] # Y 
-    #U = Vfx[..., 1] # X
-    #C = Vfx[..., 2] # Z
-    # I would rather keep vectors in the ZRC (as in matrix indexing, not Cartezian order)
-    C = Vfx[...,0] # -> Z (d)
-    V = Vfx[...,1] # -> Y (r)
-    U = Vfx[...,2] # -> X (c)
-    lengths = lengths_coll[sigma]
-    vectors_coll[sigma] = np.stack((C*lengths, V*lengths, U*lengths), axis=3) # (in XYZ)
-```
-
-# Расчет масок для различных сигм
-
-```{python}
-from ucats import masks as umasks
-```
-
-```{python}
-masks = {}
-for sigma in tqdm(sigmas):
-    sato = sato_coll[sigma]
-    threshold = threshold_li(sato[sato>0])*sigma**0.5
-    masks[sigma] = remove_small_objects(sato > threshold, min_size=int(sigma*64))
-```
-
-```{python}
-masks[sigmas[-1]] = umasks.select_overlapping(masks[sigmas[-1]], soma_mask)
-```
-
-```{python}
-for k in range(len(sigmas)-2,-1,-1):
-    sigma = sigmas[k]
-    masks[sigma] = umasks.select_overlapping(masks[sigma], ndi.binary_dilation(masks[sigmas[k+1]], iterations=5))
-```
-
-Определение оптимальной сигмы
-
-```{python}
-fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
-mask_threshs = {}
-
-for ax, sigma in zip(np.ravel(axs), sigmas):
-    lightness = final_image[masks[sigma]]
-    if sigma < 3:
-        th = 0
-    else:
-        th = -threshold_li(-lightness)
-    mask_threshs[sigma] = th
-    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
-    ax.hist(lightness)
-    ax.axvline(th, color='red')
-```
-
-```{python}
-# for sigma, mask in masks.items():
-#     pre_mask = remove_small_objects((final_image > mask_threshs[sigma]) & masks[sigma], 5, connectivity=3)
-#     masks[sigma] = largest_region(pre_mask)
-```
-
-```{python}
-squares = np.array([np.sum(mask) for mask in masks.values()])
-# Клетка-убийца
-plt.scatter(x=sigmas[1:], y=(squares/np.roll(squares,1))[1:])
-```
-
-```{python}
-#verbose=True
-```
-
-```{python}
-if verbose:
-    w = napari.view_image(final_image, )
-    for sigma in sigmas:
-        sato = sato_coll[sigma]
-        w.add_image(masks[sigma], blending='additive', name=f'σ={sigma:02f}', colormap='red')
-```
-
-# Объединение результатов Сато для различных сигм
-
-```{python}
-sigma_sato = np.zeros(final_image.shape, dtype=int)
-hout = np.zeros(final_image.shape)
-mask_sum = np.zeros(final_image.shape, dtype=bool)
-
-for sigma, sato in tqdm(sorted(sato_coll.items(), reverse=True)):
-# for sigma, sato in tqdm(sorted(sato_coll.items())):
-    hcurr = sato
-    mask_sum = masks[sigma] | mask_sum
-    mask = (hcurr > hout)*mask_sum # restrict search for optimal sigmas by the corresponding mask
-    
-    hout[mask] = hcurr[mask]
-    sigma_sato[mask] = sigma2id[sigma]
-```
-
-```{python}
-len(sigmas)
-```
-
-```{python}
-if verbose:
-    idx = len(sigmas)
-    w = napari.view_image(final_image, opacity=0.5)
-    w.add_image(soma_mask, colormap='magenta', blending='additive')
-    w.add_image(sigma_sato==idx, name='sigma_sato==idx')
-    w.add_image(masks[id2sigma[idx]], name='mask for sigma')
-    w.add_image(sigma_sato)
-```
-
-# Объединение собственных векторов различных сигм
-
-```{python}
-vectors_best = np.zeros(vectors_coll[sigmas[0]].shape)
-Vf_best = np.zeros(Vf_coll[sigmas[0]].shape)
-
-mask_sum = np.zeros(final_image.shape,bool)
-masks_exclusive = {}
-
-for k in range(len(sigmas)-1,-1,-1):
-# for k in range(len(sigmas)):
-    sigma = sigmas[k]
-    mask = masks[sigma]
-    if k < len(sigmas)-1:
-        mask = mask & (mask ^ mask_sum)
-    mask_sum += mask.astype(bool)
-    masks_exclusive[sigma] = mask
-    vectors_best[mask] = vectors_coll[sigma][mask]
-    Vf_best[mask] = Vf_coll[sigma][mask]
-```
-
-```{python}
-sigma_mask = np.zeros(final_image.shape, dtype=int)
-for sigma_id, sigma in id2sigma.items():
-    sigma_mask[masks_exclusive[sigma]] = sigma_id
-```
-
-```{python}
-import hessian_vectors as hv
-```
-
-```{python}
-sigmas
-```
-
-```{python}
-final_image.shape
-```
-
-```{python}
-
-```
-
-```{python}
-if verbose:    
-    sigma_id = -1
-    sigma = sigmas[sigma_id]
-    print(sigma)
-    w = napari.view_image(final_image, opacity=0.5)
-#     colors = ['red', 'green', 'magenta', 'cyan', 'blue']
-
-#     for sigma, color in zip(masks, itt.cycle(colors)):
-    emask = masks_exclusive[sigma]
-    print('Emask shape:', emask.shape)
-    vectors = vectors_best[emask]
-    print('Vectors shape:', vectors.shape)
-    nd, nr, nc = final_image.shape
-    #indexgrid = np.meshgrid(np.arange(nd), np.arange(nr), np.arange(nc), indexing='ij')
-    indexgrid = np.mgrid[:nd, :nr, :nc]
-    print('Indexgrid shape:', indexgrid[0].shape)
-
-    z, y, x = [np.ravel(a[emask]) for a in indexgrid]
-    z1, y1, x1 = vectors[:,0], vectors[:,1], vectors[:,2]
-    
-    print('XYZ shapes:', x.shape, y.shape, z.shape)
-    print('X1Y1Z1 shapes:', x1.shape, y1.shape, z1.shape)
-    
-    vecs = np.zeros((vectors.shape[0], 2, 3))
-    
-    vecs[..., 0, 0] = z
-    vecs[..., 0, 1] = y
-    vecs[..., 0, 2] = x
-    #
-    vecs[..., 1, 0] = z1
-    vecs[..., 1, 1] = y1
-    vecs[..., 1, 2] = x1
-    #
-    properties = {'length': hout[masks_exclusive[sigma]]}
-    w.add_vectors(vecs, edge_width=0.2,
-                  length=1,  
-                  properties=properties,
-                  edge_color='length', 
-                  name=f'σ={sigmas[sigma_id]:02f}', 
-                  edge_colormap='cyan')
-```
-
-```{python}
-if verbose:    
-    w = napari.view_image(final_image, )
-    colors = ['red', 'green', 'magenta', 'cyan', 'blue']
-    for sigma, color in zip(masks, itt.cycle(colors)):
-        w.add_image(masks_exclusive[sigma], blending='additive', name=f'σ={sigma:02f}',colormap=color)
-```
-
-```{python}
-qnorm = np.linalg.norm(vectors_best, axis=-1)
-```
-
-```{python}
-if verbose:
-    w = napari.view_image(final_image, opacity=0.5)
-    w.add_image(soma_mask, blending='additive', colormap='magenta')
-    w.add_image(qnorm, blending='additive', name='qnorm', contrast_limits=(qnorm[qnorm>0].min(), qnorm.max()))
-```
-
-# Построение графа
-
-<!-- #region -->
-## Выражение для весов ребер
-
-В качестве весов мы используем dissimilarities (неcхожести между узлами,  расстояния). 
-
-Нам сначала удобнее сформулировать схожести векторов между соседними узлами, потом задать веса ребер как нечто противоположное схожести.
-
-Основной мерой схожести (пока) будет совпадение направлений собственных векторов матрицы Гессе. Кроме того, длины векторов у нас используются из значений vesselness (по Sato, например), а значит, чем длинее оба вектора, тем меньше должен быть вес этой связи (сильнее связь).
-
-Совпадение направлений между векторами $\mathbf u$ и $\mathbf{v}$ рассчитывается как cosine similarity:
-
-\begin{equation}
-S_{uv} = S(\mathbf{u},\mathbf{v}) = 
-\frac{\mathbf{u}\cdot \mathbf{v}}
-     {\lVert \mathbf{u} \lVert \lVert \mathbf{v} \lVert}
-\end{equation}
-
-Поскольку у нас, формально, вектора могут оказаться разнонаправленными, мы должны использовать абсолютное значение $\lvert S \lvert$.
-
-
-Итак,  выражение для веса ребер:
-
-**Внимание: код мог "убежать вперед" от этого описания, проверь код!**
-\begin{equation}
-W_{ij} := 1 - \left[(1-\alpha)\lvert S^H_{ij} \lvert + \alpha \lvert S^E_{ij} \lvert \right]\frac{N_{ij}}{\max{N_{ij}}},
-\end{equation}
-
-Или (сейчас используется этот вариант)
-
-\begin{equation}
-W_{ij} := 1 - \lvert S^H_{ij} \lvert + \lvert S^E_{ij} \lvert^\alpha\frac{N_{ij}}{\max{N_{ij}}},
-\end{equation}
-
-где $N_{ij}$ — средняя норма Hessian-based векторов в узлах, нормированная на максимальное значение. $S^H_{ij}$ — cosine similarity направлений векторов в соседних узлах, $S^E_{ii}$ — cosine similarity между ориентацией Hessian-вектора в узле $i$ и ориентацией ребра между узлами $i$ и $j$.
-<!-- #endregion -->
-
-Можно предложить как минимум, два варианта объединения масштабов:
- 1. [X] "Best" -- это где вектора в каждом вокселе взяты из соответствующих масок для разных масштабов, потом все это сведено в один граф, и во всем графе
-         ищется путь до поверхности сомы. **NOTE:** по идее, маски должны быть "исключительными", то есть каждая область может принадлежать только одной сигме.
- 2. [ ] "Combined" -- скелет и пути задаются итеративно от больших масштабов к маленьким, то есть используется свой граф для каждого масштаба и пути ищутся в дополнение к уже найденым. 
-       Кстати, можно сделать лучше (предположительно), если вектора из qstack_mask старшего масштаба добавлять к графу меньшего масштаба и опять искать пути до сомы. Тогда будут дополнительно 
-       "тренироваться" пути вдоль больших веток. 
-       Потом можно брать просто сумму qstacks для разных масштабов, маску можно брать как объединение всех масок на разных уровнях или снова как надпороговые пиксели. 
-
-```{python}
-
-```
-
-```{python}
-def prep_crops(ndim=3):
-    "makes list of crops for edges"
-    num2slice = {1: (slice(1,None), slice(None,-1)), 
-                 0: (slice(None), slice(None)), 
-                -1: (slice(None,-1), slice(1,None))}
-    shifts = list(itt.product(*[(-1,0,1)]*ndim))
-    # we only need one half of that
-    cut = int(np.ceil(len(shifts)/2))
-    crops_new = [list(zip(*[num2slice[n] for n in tuple])) for tuple in shifts[cut:]]
-    return crops_new
-```
-
-```{python}
-crops2d = prep_crops(2)
-```
-
-```{python}
-def tensor_cosine_similarity(U, V, return_norms=False):
-    "Calculate cosine similarity between vectors stored in the last dimension of some tensor"
-    
-    dprod = np.einsum('...ij,...ij->...i', U, V)
-    
-    #norm_U = np.linalg.norm(U, axis=-1)
-    #norm_V = np.linalg.norm(V, axis=-1)
-    
-    # don't know why, but this is faster than linalg.norm
-    norm_U = np.sum(U**2, axis=-1)**0.5
-    norm_V = np.sum(V**2, axis=-1)**0.5
-    
-    normprod = norm_U*norm_V
-    
-    out = np.zeros(U.shape[:-1], dtype=np.float32)
-    nonzero = normprod>0
-    out[nonzero] = dprod[nonzero]/normprod[nonzero]
-    
-    if return_norms:
-        return out, (norm_U, norm_V)
-    else:
-        return out
-```
-
-```{python}
-def calc_edges(U, V, index1, index2, alpha=0.1, beta=0.001,
-               do_threshold=True, return_W=False, verbose=False,
-               as_similarities=False,
-              ):
-    
-    # cовпадение направлений из Гессиана
-    Sh, (normU,normV) = tensor_cosine_similarity(U,V, return_norms=True)
-    Sh = np.abs(Sh)
-    
-    # совпадение направления из Гессиана и направления к соседу
-    Se = tensor_cosine_similarity(U, (index2-index1), return_norms=False)
-    Se = np.abs(Se)
-    
-    #Sx = np.sum((index2-index1)**2, axis=-1)#**0.5
-    Sx = np.sum(np.abs(index2-index1), axis=-1)
-    #Sx /= Sx.max()
-    
-    N = (normU + normV)/2
-    N /= N.max()
-    
-    #W = 1 - N*((1 - alpha)*Sh + alpha*Se)
-    #W = 1 - N*(Sh * Se**alpha) # last working
-    #W = 1 - (Sh**0 * Se**alpha)
-    #W = Sx*0 + (1 - Se - 0*N*Sh)
-    #W  = np.ones(Sx.shape)
-    
-    if verbose:
-        print('N+ percentiles:', np.percentile(N[N>0], (2,25,50,75,95)))
-    offset = 2
-    #W = offset + Sx - N*(Sh*Se)
-    
-    # Cosine similarity between Hessian eigenvectors orientations and 
-    # between Hessian vector and linkage vector
-    S = (1-alpha)*Sh + alpha*Se
-
-    
-    # THIS IS THE MAIN THING IN THE NOTEBOOK
-    #W = np.exp(-N*S) + Sx*beta + 100*()
-    #W  = Sx*beta + offset - N*S
-    #W = Sx * beta + offset - N*Sh*Se
-    
-    if as_similarities:
-        W = N*(Sh + 0*Se) # temporarily, make weights as adjacency, not distance...
-    else:
-        W = Sx * beta + offset - N*Sh*Se
-        
-    
-    
-    if verbose:
-        print('Negative weights?', np.any(W<offset))
-        print('S stats:', np.percentile(np.exp(-N*S)[N>0], (2,25,50,75,95)))
-        print('W stats:', np.percentile(W[N>0], (2,25,50,75,95)))
-        print('Sx stats:', np.percentile(Sx[N>0], (2,25,50,75,95)))
-
-    W = np.maximum(0, W) # just to be safe
-    
-    if return_W:
-        return W
-    
-    Wflat = W.ravel()
-    #cond = Wflat < Wflat.max()
-    #cond = np.ravel(N) > 0 # last
-    
-    if as_similarities:
-        cond = (np.ravel(N) > 0)*(Wflat>0) # skip zero-weight weights (if weights are similarities)
-    else:
-        cond = (np.ravel(N) > 0)
-    
-    Sx = Wflat[cond]
-    
-    #thresholds = [1-threshold_minimum(Sx),
-    #              1-threshold_li(Sx),
-    #              1-threshold_triangle(Sx)
-    #             ]
-    #th = np.max(thresholds)
-    #th = Wflat.max() - threshold_li(Sx)
-    # Thresholding is the tricky bit: too little and it takes forever to compute paths
-    # Too high and you can't build paths at all
-    
-    
-    if as_similarities:
-        Wgood = (Wflat > 0) & (np.ravel(N)>0) # temporarily, if weights are similarities
-    else:      
-        # if weights are distances
-        # The negative threshold of negative distribution trick
-        # Rationale is that we want to take "dark" values rather than "bright"
-        # So we take a negative of the  "picture" and flip over the threshold
-        th = -threshold_li(-Sx)
-        #li = threshold_li(Wflat) if do_threshold else W.max()
-        th = th if do_threshold else W.max()
-
-        
-        Wgood = (Wflat < th) & (np.ravel(N)>0) # was this
-        #Wgood = (np.ravel(N) > 0) # temporarily, just where vectors are non-negative    
-    
-    if verbose:
-        print('Thresholding done')
-        print('Threshold: ', th)
-        print('Max, min:', Wflat.max(), Wflat.min())
-        print('% supra-threshold', 100*np.sum(Wgood)/len(Wflat))
-    
-    idx1 = (tuple(i) for i in index1.reshape((-1, index1.shape[-1]))[Wgood])
-    idx2 = (tuple(i) for i in index2.reshape((-1, index2.shape[-1]))[Wgood])
-    
-    return zip(idx1, idx2,  Wflat[Wgood])
-    
-    
-```
-
-```{python}
-i, j, k = np.indices(final_image.shape)
-idx = np.stack((i,j,k), axis=3)
-idx.shape
-```
-
-```{python}
-i, j= np.indices(final_image.shape[1:])
-idx2d = np.stack((i,j), axis=2)
-idx2d.shape
-```
-
-```{python}
-crops = prep_crops()
-```
-
-```{python}
-crops[0]
-```
-
-```{python}
-# G = nx.Graph()
-
-# G.add_weighted_edges_from([(1,2, 0.124)])
-
-# G.get_edge_data(1,2)
-
-# G.get_edge_data(2,1)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-# Move these to Papermill parameters?
-alpha = 0.1 # relative weight of coside distance between Hessian vector and linkage vector
-beta = 0.0  # weight of Euclidean distance between the nodes 
-
-graph_dist = nx.Graph()
-
-vectors = vectors_best
-
-for crop, acrop in tqdm(crops):
-         graph_dist.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], 
-                                                  idx[crop], idx[acrop], 
-                                                  alpha=alpha, beta=beta,
-                                                  as_similarities=False,
-                                                  verbose=False))
-```
-
-```{python}
-# Move these to Papermill parameters?
-alpha = 0.1 # relative weight of coside distance between Hessian vector and linkage vector
-beta = 0.0  # weight of Euclidean distance between the nodes 
-
-graph_sim = nx.Graph()
-
-vectors = vectors_best
-
-for crop, acrop in tqdm(crops):
-         graph_sim.add_weighted_edges_from(calc_edges(vectors[crop], vectors[acrop], 
-                                                  idx[crop], idx[acrop], 
-                                                  alpha=alpha, beta=beta,
-                                                  as_similarities=True,     
-                                                  verbose=False))
-```
-
-##  Небольшой спектральный анализ получившегося графа (получившихся графов)
-
-**Note:**
-
-```{python}
-# #graph_dist.add_edge?
-```
-
-```{python}
-final_image.shape
-```
-
-```{python}
-vectors.shape
-```
-
-```{python}
-import plotly.express as px
-```
-
-```{python}
-#len(graph)
-```
-
-```{python}
-# first, just look at the eigenvalues (takes too long to compute...)
-# #%time eigs = nx.laplacian_spectrum(graph)
-```
-
-```{python}
-#len(eigs)
-```
-
-```{python}
-#plt.figure()
-# plt.plot(eigs[:50], 'sk-')
-```
-
-### **Randomize weights in the graph where weights are distances (hus
-
-```{python}
-# # randomize
-# for n1,n2,data in tqdm(graph_dist.edges(data=True)):
-#     if data['weight']>0:
-#         graph_dist.add_edge(n1,n2, weight=np.random.rand() + 0.001)
-```
-
-```{python}
-# #graph_dist.add_edge?
-```
-
-```{python}
-# randomize
-for n1,n2,data in tqdm(graph_sim.edges(data=True)):
-    if data['weight']>0:
-        w = data['weight']
-        graph_sim.add_edge(n1,n2, 
-                           rand_weight=np.clip(np.random.rand() + 0.0001, 0,1), 
-                           distance = np.exp(-w),
-                           weight=w)
-```
-
-### Just the Fiedler vector (corresponding to the first non-zero eigenvalue)
-(slow as the solver tries to find exact solution to the eigenvalue problem)
-
-```{python}
-comps_d = list(nx.connected_components(graph_dist)) # nx.fiedler_vector requires a connected (sub-)graph
-comps_s = list(nx.connected_components(graph_sim)) # nx.fiedler_vector requires a connected (sub-)graph
-```
-
-```{python}
-len(graph_dist), len(graph_sim), len(comps_d), len(comps_s)
-```
-
-```{python}
-clengths_d = [len(c) for c in comps_d]
-clengths_s = [len(c) for c in comps_s]
-```
-
-```{python}
-g1_d = graph_dist.subgraph(comps_d[np.argmax(clengths_d)])#.copy()
-g1_s = graph_sim.subgraph(comps_s[np.argmax(clengths_s)])
-```
-
-```{python}
-# randomize just to check if weights do have any interesting effects...
-```
-
-```{python}
-# #g1_d.edges?
-```
-
-```{python}
-
-```
-
-```{python}
-len(g1_d), len(g1_s)
-```
-
-```{python}
-# #%time fv = nx.fiedler_vector(g1, weight=None)
-# %time fv_d = nx.fiedler_vector(g1_d) # how about with weights?
-```
-
-```{python}
-# #%time fv_s = nx.fiedler_vector(g1_s) # how about with weights?
-```
-
-```{python}
-def map_nodes_to_3d(node_values, graph, full_shape, dtype=np.float32, verboze=False):
-    x = np.zeros(full_shape, dtype)
-    for vi, n in zip(tqdm(node_values, disable=not verbose), graph.nodes):
-        x[n] = vi
-    return x
-```
-
-```{python}
-fvx_d = map_nodes_to_3d(fv_d, g1_d, final_image.shape)
-#fvx_s = map_nodes_to_3d(fv_s, g1_s, final_image.shape)
-```
-
-```{python}
-# fvx_d = np.zeros(final_image.shape, np.float32)
-# fvx_s = np.zeros(final_image.shape, np.float32)
-
-# for vi, n in zip(tqdm(fv_d), g1_d.nodes):
-#     fvx_d[n] = vi
-
-# for vi, n in zip(tqdm(fv_s), g1_s.nodes):
-#     fvx_s[n] = vi
-```
-
-```{python}
-w_d = napari.view_image(final_image,)
-w_d.add_image(-fvx_d*(fvx_d<0),colormap='cyan', name='dist,neg',blending='additive')
-w_d.add_image(fvx_d*(fvx_d>0), colormap='magenta',blending='additive',name='dist, pos')
-```
-
-```{python}
-# w_s = napari.view_image(final_image,)
-# w_s.add_image(-fvx_s*(fvx_s<0),colormap='cyan', name='sim,neg')
-# w_s.add_image(fvx_s*(fvx_s>0), colormap='magenta',blending='additive',name='sim, pos')
-```
-
-
-#### Laplacian matrix to play with:
-
-1. [ ] Is it returned as a sparse matrix or dense matrix?
-2. [ ] Which normalization is used in the `normalized_laplacian_matrix`?
-3. [ ] How long will it take to compute the eigendecomposition of L and Ln just using `numpy.linalg`? Unfortunately, CUDA-based tensorflow's eigh crashes on delta at the moment. 
-
-```{python}
-
-
-```
-
-```{python}
-# nx.normalized_laplacian_matrix?
-```
-
-```{python}
-# #%time L = nx.laplacian_matrix(g1, weight=None) #simply one before manipulating weights
-# %time L_s = nx.laplacian_matrix(g1_s) 
-# %time L_r = nx.laplacian_matrix(g1_s, weight='rand_weight') 
-# %time L_d = nx.laplacian_matrix(g1_d) 
-```
-
-```{python}
-A_s = nx.adjacency_matrix(g1_s)
-D_s = A_s.sum(axis=0)
-```
-
-```{python}
-A_r = nx.adjacency_matrix(g1_s, weight='rand_weight')
-D_r = A_r.sum(axis=0)
-```
-
-```{python}
-
-```
-
-```{python}
-#np.ravel(D_s.todense())
-```
-
-```{python}
-
-#D_s
-```
-
-```{python}
-A_d = nx.adjacency_matrix(g1_d)
-D_d = np.sum(A_d, axis=0)
-```
-
-```{python}
-#A_s.shape
-```
-
-```{python}
-from scipy import sparse as scsparse
-```
-
-```{python}
-# normalized (random-walk) similarity-based Laplacian
-#L_sn = scsparse.diags(1/D_s).dot(L_s)
-```
-
-```{python}
-D_s2 = scsparse.diags(np.sqrt(1/D_s))
-D_r2 = scsparse.diags(np.sqrt(1/D_r))
-```
-
-```{python}
-L_sn = D_s2.dot(L_s.dot(D_s2))
-L_srw = scsparse.diags(1/D_s).dot(L_s)
-```
-
-```{python}
-#L_rn = scsparse.diags(1/D_r).dot(L_r)
-
-L_rn = D_r2.dot(L_r.dot(D_r2))
-```
-
-### Let's check out the (fast?) spectral clustering with QR
-
-```{python}
-from scipy import sparse as scsparse
-```
-
-```{python}
-from sklearn import cluster
-```
-
-```{python}
-spc = cluster.SpectralClustering(n_clusters=25, 
-                                 affinity='precomputed',
-                                 eigen_solver='amg',
-                                 assign_labels='cluster_qr',
-                                )
-```
-
-```{python}
-A_d.format, A_s.format
-```
-
-```{python}
-# %time labels_s = spc.fit_predict(scsparse.csr_matrix(A_s))
-```
-
-```{python}
-# %%time 
-labels_r = cluster.SpectralClustering(n_clusters=25, 
-                                 affinity='precomputed',
-                                 eigen_solver='amg',
-                                 assign_labels='cluster_qr', # was: cluster_qr
-                                ).fit_predict(scsparse.csr_matrix(A_r))
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-# %%time 
-labels_d = cluster.SpectralClustering(n_clusters=25, 
-                                 affinity='precomputed',
-                                 eigen_solver='amg',
-                                 assign_labels='cluster_qr', # was: cluster_qr
-                                ).fit_predict(scsparse.csr_matrix(A_d))
-```
-
-```{python}
-fvl_s = map_nodes_to_3d(labels_s+1, g1_s, final_image.shape)
-fvl_r = map_nodes_to_3d(labels_r+1, g1_s, final_image.shape)
-fvl_d = map_nodes_to_3d(labels_d+1, g1_d, final_image.shape)
-```
-
-```{python}
-w_clust1 = napari.view_image(final_image,)
-w_clust1.add_image(fvl_s, contrast_limits=(0,25), name='labs-sim', interpolation='nearest', opacity=0.4, colormap='turbo')
-w_clust1.add_image(fvl_r, contrast_limits=(0,25), name='labs-rand', interpolation='nearest', opacity=0.4, colormap='turbo')
-w_clust1.add_image(fvl_d, contrast_limits=(0,25), name='labs-dist', interpolation='nearest', opacity=0.4, colormap='turbo')
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-# dv_d = np.zeros(final_image.shape, np.float32)
-# dv_s = np.zeros(final_image.shape, np.float32)
-
-# for di, n in zip(tqdm(np.ravel(D_d.todense())), g1_d.nodes):
-#     dv_d[n] = di
-    
-# for di, n in zip(tqdm(np.ravel(D_s.todense())), g1_s.nodes):
-#     dv_s[n] = di    
-```
-
-```{python}
-# dv_s = map_nodes_to_3d(np.ravel(D_s.todense()), g1_s, final_image.shape)
-# dv_r = map_nodes_to_3d(np.ravel(D_r.todense()), g1_s, final_image.shape)
-# dv_d = map_nodes_to_3d(np.ravel(D_d.todense()), g1_d, final_image.shape)
-```
-
-```{python}
-# w = napari.view_image(final_image)
-# w.add_image(dv_d, colormap='inferno', name='degree, dist')
-# w.add_image(dv_r, colormap='inferno', name='degree, rand')
-# w.add_image(dv_s, colormap='inferno', name= 'degree, sim')
-```
-
-```{python}
-_=1
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-#from scipy import sparse as scsparse
-```
-
-```{python}
-#import sparse
-```
-
-```{python}
-X_init = np.random.rand(A_s.shape[0], 25)
-```
-
-```{python}
-L_sn
-```
-
-```{python}
-import pyamg
-```
-
-```{python}
-#reload(pyamg)
-```
-
-```{python}
-# %time eigvals_s,eigvecs_s =  scsparse.linalg.lobpcg(L_sn, X=X_init, largest=False, maxiter=5)
-```
-
-```{python}
-ml = pyamg.smoothed_aggregation_solver(scsparse.csr_matrix(L_sn))
-M = ml.aspreconditioner()
-```
-
-```{python}
-# %%time 
-eigvals_s,eigvecs_s =  scsparse.linalg.lobpcg(L_sn, 
-                                              X=eigvecs_s, 
-                                              #X = np.random.rand(L_s.shape[0], 25),
-                                              M=M, largest=False, maxiter=100, tol=1e-5)
-```
-
-```{python}
-#eigvals_s2
-```
-
-```{python}
-eigvals_s
-```
-
-```{python}
-eigvecs_s2 = 1/(D_s**0.5)[:,None] * eigvecs_s
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-# %%time 
-eigvals_r,eigvecs_r = scsparse.linalg.lobpcg(L_rn, 
-                                             X=np.random.rand(L_rn.shape[0], 25), 
-                                             tol=1e-5,
-                                             largest=False, maxiter=10) # try the simple approach...
-```
-
-```{python}
-# %%time 
-
-mlr = pyamg.smoothed_aggregation_solver(scsparse.csr_matrix(L_rn))
-Mr = mlr.aspreconditioner()
-
-
-eigvals_r,eigvecs_r = scsparse.linalg.lobpcg(L_rn, 
-                                             X=eigvecs_r,
-                                             M=Mr,
-                                             tol=1e-5,
-                                             largest=False, maxiter=100) # try the simple approach...
-```
-
-```{python}
-# #%time eigvals_d,eigvecs_d = scsparse.linalg.eigsh(L_d.astype(np.float32),k=20,which='SM') # try the simple approach...
-```
-
-```{python}
-# #%time eigvals_s,eigvecs_s = scsparse.linalg.eigsh(L_s.astype(np.float32),k=20,which='SM') # try the simple approach...
-```
-
-- [ ] **next thing to do** -- try using normalized Laplacians
-
-```{python}
-#eigvals_d
-```
-
-```{python}
-np.min(eigvals_r.real), np.min(eigvals_s.real)
-```
-
-```{python}
-# ksort = np.argsort(eigvals)
-# eigvals = eigvals[ksort].real
-# eigvecs = eigvecs[:,ksort].real
-```
-
-```{python}
-plt.plot(eigvals_r, 'sb-')
-plt.plot(eigvals_s, 'sm-')
-#plt.plot(eigvals_s2, 'sr-')
-
-plt.legend(['dist', 'sim', 'sim2'])
-```
-
-```{python}
-
-```
-
-```{python}
-#fv.shape, eigvecs.shape
-```
-
-```{python}
-#img.shape, img_clahe.shape
-```
-
-```{python}
-#np.diag(D)
-
-```
-
-```{python}
-fig,axs = plt.subplots(1,4, figsize=(12,4))
-
-for k, ax in zip([1,5,10,20], axs):
-    ax.set_title(f'Eigenvalue {k}',size=10)
-    ax.plot(sorted(eigvecs_s2[:,k]), '-', label='sim')
-    ax.plot(sorted(eigvecs_r[:,k]), '-', label='rand')
-ax.legend()
-```
-
-```{python}
-
-```
-
-```{python}
-keig = 1
-fve_s = map_nodes_to_3d(eigvecs_s[:,keig], g1_s, final_image.shape)
-fve_s2 = map_nodes_to_3d(eigvecs_s2[:,keig], g1_s, final_image.shape)
-fve_r= map_nodes_to_3d(eigvecs_r[:,keig], g1_s,final_image.shape)
-#fve_d= map_nodes_to_3d(eigvecs_d[:,keig], g1_d,final_image.shape)
-                        
-```
-
-```{python}
-w = napari.view_image(final_image)
-w.add_image(-fve_s*(fve_s<0),colormap='cyan', name='sim, neg',blending='additive')
-w.add_image(fve_s*(fve_s>0), colormap='magenta',blending='additive', name='sim, pos')
-```
-
-```{python}
-w = napari.view_image(final_image)
-w.add_image(-fve_s2*(fve_s2<0),colormap='cyan', name='sim2, neg',blending='additive')
-w.add_image(fve_s2*(fve_s2>0), colormap='magenta',blending='additive', name='sim2, pos')
-```
-
-```{python}
-w = napari.view_image(final_image)
-w.add_image(-fve_r*(fve_r<0),colormap='cyan', name='rand, neg',blending='additive')
-w.add_image(fve_r*(fve_r>0), colormap='magenta',blending='additive', name='rand, pos')
-```
-
-```{python}
-dclust = cluster.KMeans(n_clusters=25)
-```
-
-```{python}
-eigvecs_r.shape
-```
-
-```{python}
-labs_s = dclust.fit_predict(eigvecs_s[:,1:])
-labs_s2 = dclust.fit_predict(eigvecs_s2[:,1:])
-labs_r = dclust.fit_predict(eigvecs_r[:,1:])
-```
-
-```{python}
-labs_r.shape
-```
-
-```{python}
-#labs.min(), labs.max()
-```
-
-```{python}
-fvl_s = map_nodes_to_3d(labs_s+1, g1_s, final_image.shape)
-fvl_s2 = map_nodes_to_3d(labs_s2+1, g1_s, final_image.shape)
-fvl_r = map_nodes_to_3d(labs_r+1, g1_s, final_image.shape)
-```
-
-```{python}
-w_clust2 = napari.view_image(final_image,)
-w_clust2.add_image(fvl_s, contrast_limits=(0,25), name='labs-sim', interpolation='nearest', opacity=0.4, colormap='turbo', blending='additive')
-w_clust2.add_image(fvl_s2, contrast_limits=(0,25), name='labs-sim2', interpolation='nearest', opacity=0.4, colormap='turbo', blending='additive')
-w_clust2.add_image(fvl_r, contrast_limits=(0,25), name='labs-rand', interpolation='nearest', opacity=0.4, colormap='turbo', blending='additive')
-```
-
-```{python}
-#fvl.min(), fvl.max()
-```
-
-```{python}
-w = napari.view_image(fvl_d, contrast_limits=(0,20), name='dist')
-w.add_image(fvl_s, contrast_limits=(0,20), name='sim')
-```
-
-```{python}
-#plt.hexbin(eigvecs[:,2], eigvecs[:,3], bins='log')
-```
-
-```{python}
-# plt.plot(eigvecs_d[:,2], eigvecs_d[:,3], ',')
-# plt.xlim(-0.01,0.01)
-```
-
-```{python}
-# plt.plot(eigvecs_s[:,2], eigvecs_s[:,3], ',')
-# plt.xlim(-0.01,0.01)
-```
-
-```{python}
-#px.scatter_3d(*eigvecs[:100,1:4].T)
-```
-
-```{python}
-
-```
-
-### No-no for too big sigma_jumps
-(Could also be a papermill flag)
-
-```{python}
-for p1, p2, data in tqdm(graph_sim.edges(data=True)):
-    if np.abs(sigma_mask[p1]-sigma_mask[p2]) > 1:
-        graph_sim.add_edge(p1,p2, distance=data['distance'] + 1000)
-```
-
-## Добавление точек оболочки сомы в граф
-
-```{python}
-def get_mask_vals(idxs, mask):
-    idx_mask = mask[idxs[:,0], idxs[:,1], idxs[:,2]]
-    return idxs[idx_mask]
-```
-
-```{python}
-def get_edges(mask, index1, index2, weight):
-    idx1 = [tuple(i) for i in get_mask_vals(index1.reshape((-1, index1.shape[-1])), mask)]
-    idx2 = [tuple(i) for i in get_mask_vals(index2.reshape((-1, index2.shape[-1])), mask)]
-    return zip(idx1, idx2, np.full(len(idx1), weight))
-```
-
-```{python}
-Gsoma = nx.Graph()
-```
-
-```{python}
-soma_shell_mask = get_shell_mask(soma_mask)
-```
-
-```{python}
-for crop, acrop in tqdm(crops):
-    Gsoma.add_weighted_edges_from(get_edges(soma_shell_mask, idx[crop], idx[acrop], 0.7))
-```
-
-```{python}
-# %%time 
-
-for p1, p2, weight in Gsoma.edges(data=True):
-    try:
-        old_weight = graph_sim.get_edge_data(p1, p2)['weight']
-    except Exception as exc:
-        old_weight = 1
-    graph_sim.add_edge(p1, p2, weight=max(weight['weight'], old_weight))
-```
-
-```{python}
-sigma_mask[soma_mask] = sigma2id[sigmas[-1]] # Soma is also the largest scale
-sigma_mask[soma_shell_mask] = sigma2id[sigmas[-1]] # Soma is also the largest scale
-```
-
-```{python}
-id2sigma[0] = 0
-nx.set_node_attributes(graph_sim, 
-                       gu.get_attrs_by_nodes(graph_sim, sigma_mask, lambda x: id2sigma[x]), 
-                       'sigma_mask')
-```
-
-```{python}
-graph_sim.nodes[soma_shell[0]]
-```
-
-```{python}
-#eigvecs_s2.shape
-```
-
-**Set distances from eigenvectors of Lrw, just to see what it sums up to:**
-
-```{python}
-idx_num_dict = {n:j for j,n in enumerate(graph_sim.nodes)}
-```
-
-```{python}
-# randomize
-for n1,n2,data in tqdm(graph_sim.edges(data=True)):
-    if data['weight']>0:
-        w = data['weight']
-        v1,v2 = idx_num_dict[n1], idx_num_dict[n2]
-        graph_sim.add_edge(n1,n2, 
-                           rand_weight=np.clip(np.random.rand() + 0.0001, 0,1), 
-                           #distance = np.exp(-w),
-                           distance = np.linalg.norm(v2-v1),
-                           weight=w)
-```
-
-```{python}
-#nodes = {n:n for n in graph.nodes()}
-```
-
-# Расчет путей, встречаемости точек в путях и слияние графов по путям
-
-```{python}
-from skimage import segmentation
-from skimage import feature as skf
-```
-
-## Step-by-step in sigmas
-
-```{python}
-# #nx.multi_source_dijkstra_path?
-```
-
-```{python}
-reload(gu)
-```
-
-```{python}
-def trim_path(g, path, sigma_start, visited_set):
-    acc = []
-    for p in path:
-        acc.append(p)
-        if (g.nodes[p]['sigma_mask'] > sigma_start) and (p in visited_set):
-            break
-    return acc
-
-def follow_to_root(g, tip, max_nodes=1000000):
-    visited = {tip}
-    acc = [tip]
-    for i in range(max_nodes):
-        parents = list(g.predecessors(tip))
-        parents = [p for p in parents if not p in visited]
-        if not len(parents):
-            break
-        tip = parents[0]
-        visited.add(tip)
-        acc.append(tip)
-    if i >= max_nodes-1:
-        print('limit reached')
-    return acc
-        
-```
-
-```{python}
-def scale_sequential_paths(G, sigmas,  weight='distance'):
-    """
-    Starting with the largest spatial scale, first try to reach soma, then reach the set of the 
-    previous starting points, and so on. Some  black magic with stopping the path segments at the 
-    right place to preven loops and cycles in the merged graphs.
-    Cycles are bad, because they break the coloring/visualization code :)
-    """
-    sub_graphs = {sigma:gu.filter_graph(G, lambda n: n['sigma_mask']>=sigma) for sigma in sigmas}
-    targets = set(soma_shell)
-    visited = set(soma_shell)
-    path_acc = {}
-    for sigma in tqdm(sorted(sigmas, reverse=True), desc='paths at sigmas'):
-        _, paths = gu.find_paths(sub_graphs[sigma], targets, final_image.shape, weight=weight)
-        targets = targets.union(set(paths.keys()))
-        if sigma < np.max(sigmas):
-            paths = {loc:trim_path(G, path, sigma, visited) 
-                     for loc, path in paths.items() 
-                     if G.nodes[loc]['sigma_mask'] == sigma}
-        visited = visited.union(reduce(set.union, paths.values(), set()))
-        path_acc[sigma] = gu.batch_compose_all(paths.values(), verbose=False)
-    return path_acc
-
-
-def compose_path_segments(G, seq_paths, ultimate_targets, max_start_sigma=2, min_path_lenght=25):
-    """
-    Combine all multi-scale path segments to a graph, then take only paths 
-    starting a a small enough sigma and reaching for the soma, the ultimate target
-    """
-    gx_all = nx.compose_all([seq_paths[sigma] for sigma in sorted(seq_paths)])
-    
-    all_tips = gu.get_tips(gx_all)
-    fine_tips = list({t for t in all_tips if G.nodes[t]['sigma_mask'] <= max_start_sigma})
-    new_paths = (follow_to_root(gx_all, t) for t in fine_tips)
-    new_paths = (p for p in new_paths 
-                 if p[-1] in ultimate_targets and len(p)>=min_path_lenght)
-    new_paths = sorted(new_paths, key=lambda p: len(p), reverse=True)
-    
-    gx_all = gu.batch_compose_all(new_paths)
-    
-    counts = gu.count_points_paths(new_paths)
-    qstack = np.zeros(stack_shape)
-    for p,val in counts.items():
-        if val >= 1:
-            qstack[p] = np.log(val) 
-    
-    # add the useful attributes
-    nx.set_node_attributes(gx_all, 
-                       gu.get_attrs_by_nodes(gx_all, qstack), 
-                       'occurence')
-    nx.set_node_attributes(gx_all, 
-                       gu.get_attrs_by_nodes(gx_all, sigma_mask, lambda x: id2sigma[x]), 
-                       'sigma_mask')
-
-    nx.set_node_attributes(gx_all, 
-                       gu.get_attrs_by_nodes(gx_all, sigma_sato, lambda x: id2sigma[x]), 
-                       'sigma_opt')
-    return gx_all
-```
-
-```{python}
-# %time seq_paths = scale_sequential_paths(graph_sim, sigmas, weight='distance')
-```
-
-```{python}
-# %time gx_all = compose_path_segments(graph_sim, seq_paths, ultimate_targets=set(soma_shell))
-```
-
-```{python}
-
-```
-
-```{python}
-# %time gu.check_for_cycles(gx_all, verbose=True) # may take a while if the graph is large
-```
-
-## Распределения встречаемостей по сигме
-
-
-Попробуем взять только те пути, где встречаемость больше порога на соотв. сигме
-
-```{python}
-occ_acc = {}
-for sigma in tqdm(sigmas):
-    sub = gu.filter_graph(gx_all, lambda node: node['sigma_mask']==sigma)
-    occ_acc[sigma] = np.array([sub.nodes[n]['occurence'] for n in sub.nodes])
-```
-
-```{python}
-fig, axs = plt.subplots(2,4, figsize=(9,6), sharex=True)
-occ_threshs = {}
-
-for ax, sigma in zip(np.ravel(axs), sigmas):
-    v_occ = occ_acc[sigma]
-    th = threshold_li(v_occ)
-    occ_threshs[sigma] = th
-    ax.set_title(f'σ={sigma :0.1f}, th={th:0.1f}')
-    ax.hist(v_occ, 50)
-    ax.axvline(th, color='red')
-```
-
-Проблема, однако, в том, что если я просто выкину узлы с низкой встречаемостью, то многие пути могут оказаться разрезанными, и я не смогу больше из всех конечных точек дойти до сомы.
-
-Как вариант, можно выкидывать узлы с низкой встречаемостью, только если у них нет дочерних узлов (т.е. это листья графа). Но тогда это придется делать в несколько итераций. 
-Либо можно убирать, если эта ветка нигде не ветвится дальше, но это сложнее отслеживать. 
-
-```{python}
-np.log(2)
-```
-
-```{python}
-def filter_fn_(G, n):
-    ni = G.nodes[n]
-    #is_high = ni['occurence'] > max(0, occ_threshs[ni['sigma_mask']])
-    is_high = ni['occurence'] > 0 # very permissive, but some branches are valid and only occur once
-    not_tip = len(list(G.successors(n)))
-    return is_high and not_tip
-```
-
-```{python}
-gx_all_occ = gx_all
-
-for i in tqdm(range(10)):
-    good_nodes = (node for node in gx_all_occ if filter_fn_(gx_all_occ, node))
-    gx_all_occ = gx_all_occ.subgraph(good_nodes)
-```
-
-```{python}
-
-```
-
-### Расстояния между узлами
-
-```{python}
-# edge_length  = {}
-# for n1, n2, data in thin_graph.edges(data=True):
-#     length = np.linalg.norm(np.array(n1)-np.array(n2))
-#     edge_length[(n1, n2)] = length
-# nx.set_edge_attributes(thin_graph, edge_length, 'length')
-```
-
-```{python}
-
-```
-
-## Визуализация
-
-```{python}
-import visualization as vis
-```
-
-```{python}
-verbose=True
-```
-
-```{python}
-if verbose:
-    wf =  napari.view_image(final_image, ndisplay=3, opacity=0.5)
-    wf.add_image(sigma_mask, colormap='turbo', blending='additive', visible=False)
-    vis.view_graph_as_colored_image(gx_all_occ, final_image.shape, wf);
-```
-
-```{python}
-_ = 1
-```
-
-# Principal graphs and the like
-
-```{python}
-paths = vis.graph_to_paths(gx_all_occ)
-```
-
-```{python}
-paths_keys = sorted([p for p in paths], key=lambda x:len(paths[x]), reverse=True)
-```
-
-```{python}
-key = paths_keys[0]
-```
-
-```{python}
-paths2 = sorted([paths[p] for p in paths], key=len, reverse=True)
-```
-
-```{python}
-paths2[0][0], paths2[0][-1]
-```
-
-```{python}
-points = np.unique(np.concatenate(paths2[1]),axis=0)
-```
-
-```{python}
-np.any(np.array(key)==points)
-```
-
-```{python}
-plt.figure()
-plt.plot(points[:,1],points[:,2],'.')
-```
-
-```{python}
-import elpigraph
-```
-
-```{python}
-len(points)
-```
-
-```{python}
-import pandas as pd
-```
-
-```{python}
-# %matplotlib qt
-```
-
-```{python}
-np.savetxt('points-test.txt', points)
-```
-
-```{python}
-pointsx = np.concatenate([
-    points,
-    points + np.random.randn(*points.shape)*0.25,   
-    points + np.random.randn(*points.shape)*0.25,
-    points + np.random.randn(*points.shape)*0.25,
-    points + np.random.randn(*points.shape)*0.25,
-    points + np.random.randn(*points.shape)*0.25,
-])
-```
-
-```{python}
-
-```
-
-```{python}
-init_nodes = np.array([(5,205,184), (10,204,183), (15,203,185)])
-#init_nodes = np.array([(-40,-6), (-40,-4), (-38,-4)])
-init_nodes
-
-init_edges = np.array([(0,1), (1,2)])
-
-```
-
-```{python}
-# %%time 
-
-lam = 0.00001
-pg = elpigraph.computeElasticPrincipalTree(pointsx, 
-                                            500, 
-                                            MaxSteps=100,   
-                                            Do_PCA=False,
-                                            CenterData=False,
-                                            InitNodes=3,
-                                            InitNodePositions=init_nodes,
-                                            InitEdges=init_edges,
-                                            TrimmingRadius=5,
-                                            Lambda=lam, Mu=10*lam,
-                                            verbose=False
-                                           )
-```
-
-```{python}
-plt.figure(figsize=(15,15))
-elpigraph.plot.PlotPG(pointsx,pg[0],Do_PCA=True, X_color='skyblue')
-plt.gcf()
-```
-
-```{python}
-plt.close('all')
-```
-
-```{python}
-import scipy as sp
-from scipy import ndimage as ndi
-from scipy import stats
-from numpy import linalg
-```
-
-```{python}
-# this should be converted to networkX Digraph eventually
-class TreeNode:
-    max_branches=5 # safety switch to prevent infinite branching
-    def __init__(self, v, parent=None, tree=None):
-        self.parent = parent
-        self.tree = set() if tree is None else tree
-        self.tree.add(self)
-        if parent is not None and not self in parent.children:
-            parent.children.append(self)
-            
-        self.children = []
-        self.v = np.array(v) # spatial coordinate of the node
-    
-    def spawn(self, 
-              S : "attractor set", 
-              Dg : "growth distance" = 0.025, 
-              eps=0.00001,
-              jitter=0.01,
-              verbose=False):
-        
-        if not len(S):
-            return
-        S = np.array(S)
-        d = (S - self.v)
-        
-        n = np.sum(d/(1e-6 + linalg.norm(d, axis=1)[:,np.newaxis]), axis=0)
-                
-        nnorm = np.linalg.norm(n)            
-        
-        n = n / (1e-6 + nnorm)
-        
-        tip = None
-            
-        vdash = self.v + Dg*n
-                
-        if len(self.children) < self.max_branches:
-            tip = TreeNode(vdash, parent=self, tree=self.tree)
-            
-        return tip
-
-```
-
-```{python}
-# #sp.spatial.KDTree.query_ball_point?
-```
-
-```{python}
-# #sp.spatial.KDTree.query?
-```
-
-```{python}
-x = set('as')
-```
-
-```{python}
-# #x.difference?
-```
-
-```{python}
-def space_colonization(tree, sources, iterations=20, Dg=0.025, Di=1, Dk=0.025, only_first_overextension=True):
-
-    in_empty_space = False
-    used_overextension = False
-        
-    tree_active = tree#.copy()
-
-    for j in tqdm(range(iterations)):
-        
-        tree_prev = [n for n in tree_active if len(n.children) <= n.max_branches]
-        
-        if len(tree_prev):
-            kdt = sp.spatial.KDTree([n.v for n in tree_prev])
-        else:
-            break
-            
-        
-        d,inds = kdt.query(sources, distance_upper_bound=Di)
-            
-        if (len(d) and np.min(d) > Di):
-            in_empty_space = True
-            if not used_overextension:
-                d,inds = kdt.query(sources, distance_upper_bound=np.min(d))
-                print('Using minimal distance that is larger than Di')
-        else:
-            if in_empty_space:
-                in_empty_space=False
-                if only_first_overextension:
-                    used_overextension = True
-        if j > 5:
-            used_overextension = True
-                            
-        spawned = []
-        for i, n in enumerate(tree_prev):
-            S = sources[inds==i]
-            new  = n.spawn(S, Dg)
-            if new is not None:
-                spawned.append(new)
-        
-        tree_active = [n for k,n in enumerate(tree_prev) if k in inds] + spawned
-        
-        too_close = kdt.query_ball_point(sources, Dk, return_length=True)        
-        
-        sources = sources[too_close == 0] 
-        
-        if not len(sources):
-            break
-        
-        # add small jitter to break up ties
-        sources  = sources + np.random.randn(*sources.shape)*Dg*0.05
-    return tree, sources
-```
-
-```{python}
-def plot_tree(tree, sources=None, ax=None, dims_to_plot=(0,1),alpha=1):
-    d1,d2 = dims_to_plot
-    if ax is None:
-        fig, ax = plt.subplots(1,1)
-        
-    for n in tree:
-        if n.parent is None:
-            ax.plot(n.v[d1], n.v[d2], 'ro')
-            
-        for ch in n.children:
-            vx = np.vstack([n.v, ch.v])
-            
-            ax.plot(vx[:,d1], vx[:,d2], 'm-', lw=1, alpha=0.5)
-    if sources is not None:
-        ax.plot(sources[:,d1], sources[:,d2], '.', color='gray', ms=0.5,alpha=alpha)
-    ax.axis('equal')
-
-```
-
-```{python}
-#tree
-```
-
-```{python}
-sigma = 1
-pointsx = np.concatenate([
-    points,
-    points + np.random.randn(*points.shape)*sigma,   
-    points + np.random.randn(*points.shape)*sigma,
-    points + np.random.randn(*points.shape)*sigma,
-    points + np.random.randn(*points.shape)*sigma,
-    points + np.random.randn(*points.shape)*sigma,
-])
-```
-
-```{python}
-#[i for i,j in enumerate(list(new_tree)[0].tree)]
-```
-
-```{python}
-tree = set()
-root = TreeNode(key, tree=tree)
-
-new_tree, remaining_sources = space_colonization(tree, pointsx, 
-                                                 iterations=30000,
-                                                 Di=5,
-                                                 Dg=0.1,
-                                                 Dk=2.5,
-                                                )
-
-```
-
-```{python}
-plt.figure(figsize=(15,15))
-plot_tree(new_tree, pointsx, dims_to_plot=(1,2), ax=plt.gca())
-plt.gcf()
-```
-
-```{python}
-_=1
-```
-
-```{python}
-plt.figure(figsize=(15,15))
-ax = plt.gca()
-
-ax.plot(points[:,1],points[:,2], color='gray', marker='.',ls='none',alpha=0.5)
-#plot_tree(new_tree, pointsx, dims_to_plot=(1,2), ax=plt.gca())
-
-d1,d2 = 1,2
-for subp in paths2[1]:
-    pts = np.array(subp)
-    ax.plot(pts[:,d1],pts[:,d2], 'r-')
-plt.gcf()
-```
-
-```{python}
-plt.close('all')
-```
-
-```{python}
-from numba import jit
-```
-
-```{python}
-@jit
-def probabilistic_sample(data, weights, Npoints=-1):
-    sh = data.shape
-    Npoints = len(data) if Npoints < 0 else Npoints
-    done = False
-    i = 0
-    out = np.zeros((Npoints, sh[1]))
-    while i < Npoints:
-        for k in range(len(data)):
-            point = data[k]
-            if np.random.rand() < weights[k]:
-                out[i] = point
-                i+=1
-                if i >= Npoints:
-                    break
-    return out
-
-def percentile_rescale(arr, plow=1, phigh=99.5):
-    low, high = np.percentile(arr, (plow, phigh))
-    if low == high:
-        return np.zeros_like(arr)
-    else:
-        return np.clip((arr-low)/(high-low), 0, 1)
-```
-
-```{python}
-import itertools as itt
-```
-
-```{python}
-# %time X = np.array(list(itt.product(*map(range, final_image.shape)))) # N-dimensional, but slower
-```
-
-```{python}
-qnorm.shape
-```
-
-```{python}
-w = napari.view_image(qnorm)
-```
-
-```{python}
-low,high = np.min(qnorm[qnorm>0]), np.max(qnorm)
-
-```
-
-```{python}
-soma_mask.shape
-```
-
-```{python}
-gamma = 1
-#weights = np.clip(np.ravel((qnorm-low)/(high-low)),0,1)
-weights = percentile_rescale(np.ravel(final_image)**gamma)*((np.ravel(qnorm)>0) |  (np.ravel(soma_mask)>0))
-weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(final_image,5))**2,plow=99.5,phigh=99.99)
-```
-
-```{python}
-center = np.sum(X*weights_s[:,None],axis=0)/np.sum(weights_s)
-center
-```
-
-```{python}
-Xc = X-center
-```
-
-```{python}
-multiplicity=1
-
-# %time Xp = probabilistic_sample(Xc, weights, multiplicity*len(X))
-```
-
-```{python}
-Xp = np.random.permutation(Xp)
-```
-
-```{python}
-Xp = Xp + np.random.randn(*Xp.shape)*0.1
-```
-
-```{python}
-len(Xp)
-```
-
-```{python}
-sum(weights>0)
-```
-
-```{python}
-weights.min(), weights[weights>0].min(), weights.max()
-```
-
-```{python}
-tree = set()
-root = TreeNode([0,0,0], tree=tree)
-root.max_branches=10
-```
-
-```{python}
-new_tree, remaining_sources = space_colonization(tree, np.random.permutation(Xp)[:200000], 
-                                                 iterations=1000,
-                                                 Di=20,
-                                                 Dg=0.1,
-                                                 Dk=10,
-                                                )
-
-```
-
-```{python}
-plt.figure(figsize=(15,15))
-plot_tree(new_tree, Xp[:100000], dims_to_plot=(1,2), ax=plt.gca(),alpha=0.05)
-```
-
-```{python}
-_=1
-```
-
-```{python}
-#weights_s = percentile_rescale(np.ravel(ndi.gaussian_filter(zstack,5))**2,plow=99.5,phigh=99.99)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-# Сохранение
-
-```{python}
-import pickle
-```
-
-```{python}
-filename
-```
-
-```{python}
-pickle_name = str(filename) + '-sequential_graph.pickle'
-```
-
-```{python}
-# %time pickle.dump(gx_all_occ.copy(), open(pickle_name, 'wb'),)
-```
-
-```{python}
-# %time thin_graph2 = pickle.load(open(pickle_name, 'rb'))
-```
-
-```{python}
-w =  napari.view_image(final_image, ndisplay=3, opacity=0.5)
-vis.view_graph_as_colored_image(thin_graph2, final_image.shape, w);
-```
-
-```{python}
-tup2str = lambda x: ','.join(list(map(str, x)))
-str2tup = lambda x: tuple(map(int, x.split(',')))
-```
-
-```{python}
-# with open('graph_3wk-both1-grn-raw.pic.pickle') as fd:
-#     load_graph = pickle.load(fd)
-
-```
-
-```{python}
-nx.write_gml(gx_all_occ.copy(), 
-             'gx_all_{}.gml.gz'.format(os.path.basename(filename)), 
-             stringizer=tup2str)
-```
-
-```{python}
-loaded_graph = nx.read_gml('gx_all_{}.gml.gz'.format(os.path.basename(filename)), destringizer=str2tup)
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
-
-```{python}
-
-```
 
 ```{python}
 
