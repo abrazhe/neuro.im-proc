@@ -3,7 +3,11 @@ from collections import defaultdict
 import numpy as np
 import networkx as nx
 
+from scipy.spatial.distance import cosine
 from tqdm.auto import tqdm
+
+
+EPSILON = 1e-5
 
 
 def draw_nodes(pos, nodelist):
@@ -26,7 +30,7 @@ def choose_main(chosen_keys, values, mass_func=len):
 
 
 class AstroGraph(nx.Graph):
-    version = 1.01
+    version = 1.02
     def __init__(self, graph):
         self.graph = graph
 
@@ -92,6 +96,10 @@ class AstroGraph(nx.Graph):
         return self.graph.successors(node)
 
     @property
+    def succ(self):
+        return self.graph.succ
+
+    @property
     def tips(self):
         return {n for n in self.nodes if len(list(self.successors(n))) == 0}
 
@@ -119,6 +127,12 @@ class AstroGraph(nx.Graph):
 
     def get_processors(self):
         raise Exception('ERROR!')
+
+
+    def setup_all_radiuses(self, ratio):
+        radiuses = {}
+        for node, data in self.nodes(data=True):
+            radiuses[node] = data['sigma_mask'] * ratio
 
 
     def get_attrs_by_nodes(self, arr, func=None):
@@ -301,6 +315,35 @@ class AstroGraph(nx.Graph):
             self.graph.add_edge(tuple(prev_p), tuple(cur_p))
             prev_p = cur_p
 
+
+    def remove_intermediate_points(self, root=None):
+        if root is None:
+            roots = self.roots
+        else:
+            roots = set(root)
+
+        while roots:
+            root = roots.pop()
+            succs = copy(self.successors(root))
+            for succ_node in succs:
+                directing_vector = np.array(succ_node) - np.array(root)
+                while succ_node:
+                    number_of_succs = len(self.graph.succ[succ_node])
+                    if number_of_succs == 0:
+                        break
+                    elif number_of_succs > 1:
+                        roots.add(succ_node)
+                        break
+                    else:
+                        next_node = list(obj.graph.graph.succ[succ_node].keys())[0]
+                        vector = np.array(next_node) - np.array(root)
+                        if cosine(directing_vector, vector) < EPSILON:
+                            self.graph.remove_node(succ_node)
+                            self.graph.add_edge(root, next_node, weight=1)
+                            succ_node = next_node
+                        else:
+                            roots.add(succ_node)
+                            break
 
     #### VIZUALIZATIONS
 
