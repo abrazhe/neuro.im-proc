@@ -13,11 +13,6 @@ jupyter:
     name: python3
 ---
 
-<!-- #region toc=true -->
-<h1>Table of Contents<span class="tocSkip"></span></h1>
-<div class="toc"><ul class="toc-item"><li><span><a href="#Next-actions-and-TODOs" data-toc-modified-id="Next-actions-and-TODOs-1"><strong>Next actions and TODOs</strong></a></span></li><li><span><a href="#Параметры-для-запуска" data-toc-modified-id="Параметры-для-запуска-2">Параметры для запуска</a></span></li><li><span><a href="#Считывание-изображения" data-toc-modified-id="Считывание-изображения-3">Считывание изображения</a></span></li><li><span><a href="#Предобработка-изображения" data-toc-modified-id="Предобработка-изображения-4">Предобработка изображения</a></span><ul class="toc-item"><li><span><a href="#CLAHE" data-toc-modified-id="CLAHE-4.1">CLAHE</a></span></li><li><span><a href="#Кадрирование" data-toc-modified-id="Кадрирование-4.2">Кадрирование</a></span></li><li><span><a href="#Масштабирование" data-toc-modified-id="Масштабирование-4.3">Масштабирование</a></span></li><li><span><a href="#Фильтрация-изображения" data-toc-modified-id="Фильтрация-изображения-4.4">Фильтрация изображения</a></span></li></ul></li><li><span><a href="#Сегментация-сомы" data-toc-modified-id="Сегментация-сомы-5">Сегментация сомы</a></span><ul class="toc-item"><li><span><a href="#Определение-центра" data-toc-modified-id="Определение-центра-5.1">Определение центра</a></span></li><li><span><a href="#Выделение-сомы" data-toc-modified-id="Выделение-сомы-5.2">Выделение сомы</a></span></li></ul></li><li><span><a href="#Расчет-матрицы-Гессе-для-различных-сигм" data-toc-modified-id="Расчет-матрицы-Гессе-для-различных-сигм-6">Расчет матрицы Гессе для различных сигм</a></span></li><li><span><a href="#Расчет-масок-для-различных-сигм" data-toc-modified-id="Расчет-масок-для-различных-сигм-7">Расчет масок для различных сигм</a></span></li><li><span><a href="#Объединение-результатов-Сато-для-различных-сигм" data-toc-modified-id="Объединение-результатов-Сато-для-различных-сигм-8">Объединение результатов Сато для различных сигм</a></span></li><li><span><a href="#Объединение-собственных-векторов-различных-сигм" data-toc-modified-id="Объединение-собственных-векторов-различных-сигм-9">Объединение собственных векторов различных сигм</a></span></li><li><span><a href="#Построение-графа" data-toc-modified-id="Построение-графа-10">Построение графа</a></span><ul class="toc-item"><li><span><a href="#Выражение-для-весов-ребер" data-toc-modified-id="Выражение-для-весов-ребер-10.1">Выражение для весов ребер</a></span></li><li><span><a href="#Добавление-точек-оболочки-сомы-в-граф" data-toc-modified-id="Добавление-точек-оболочки-сомы-в-граф-10.2">Добавление точек оболочки сомы в граф</a></span></li></ul></li><li><span><a href="#Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям" data-toc-modified-id="Расчет-путей,-встречаемости-точек-в-путях-и-слияние-графов-по-путям-11">Расчет путей, встречаемости точек в путях и слияние графов по путям</a></span><ul class="toc-item"><li><span><a href="#Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph" data-toc-modified-id="Building-all-paths-at-once,-using-the-&quot;best-scale&quot;-full-graph-11.1">Building all paths at once, using the "best-scale" full graph</a></span></li><li><span><a href="#Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs" data-toc-modified-id="Converting-paths-to-directed-graphs,-merging-and-visualizing-the-graphs-11.2">Converting paths to directed graphs, merging and visualizing the graphs</a></span></li></ul></li><li><span><a href="#Добавление-сопутствующей-информации" data-toc-modified-id="Добавление-сопутствующей-информации-12">Добавление сопутствующей информации</a></span></li><li><span><a href="#Распределения-встречаемостей-по-сигме" data-toc-modified-id="Распределения-встречаемостей-по-сигме-13">Распределения встречаемостей по сигме</a></span></li><li><span><a href="#Расстояния-между-узлами" data-toc-modified-id="Расстояния-между-узлами-14">Расстояния между узлами</a></span><ul class="toc-item"><li><span><a href="#Визуализация" data-toc-modified-id="Визуализация-14.1">Визуализация</a></span></li></ul></li><li><span><a href="#Сохранение" data-toc-modified-id="Сохранение-15">Сохранение</a></span></li></ul></div>
-<!-- #endregion -->
-
 <!-- #region -->
 # **Next actions and TODOs**
 
@@ -92,6 +87,10 @@ import ccdb
 import astromorpho as astro
 ```
 ```{python}
+
+```
+
+```{python}
 from networx2napari import draw_edges, draw_nodes
 ```
 ```{python}
@@ -160,7 +159,7 @@ import pandas as pd
 # Параметры для запуска
 
 ```{python}
-pd.read_csv('avf-pic-correspondense.csv')
+
 ```
 
 ```{python tags=c("parameters")}
@@ -192,8 +191,16 @@ OUT = False
 ```
 
 ```{python}
-filepath = Path(data_dir).joinpath(filename)
+data_path = Path(data_dir)
+```
+
+```{python}
+filepath = data_path.joinpath(filename)
 filepath
+```
+
+```{python}
+#pd.read_csv(data_path.joinpath('avf-pic-correspondense.csv'))
 ```
 
 # Считывание изображения
@@ -1245,7 +1252,25 @@ def follow_to_root(g, tip, max_nodes=1000000):
     if i >= max_nodes-1:
         print('limit reached')
     return acc
-        
+
+def prune_tip(G, tip, min_length=10, max_nodes = 1000000):
+    visited = {tip}
+    acc = [tip]
+    for i in range(max_nodes):
+        parents = [p for p in G.predecessors(tip) if not p in visited]
+        if not len(parents):
+            break
+        p = parents[0]
+        if len(list(G.successors(p))) > 1:
+            break
+        tip = p
+        visited.add(tip)
+        acc.append(tip)
+    if len(acc) < min_length:
+        #print('would remove path:', acc)
+        return set(acc)
+    else:
+        return set()
     
 # def attach_segment_ids(g):
 #     idx = 0
@@ -1386,6 +1411,7 @@ def filter_fn_(G, n):
     return is_high and not_tip
 
 
+    
 
 ```
 
@@ -1426,10 +1452,13 @@ verbose=True
 ```
 
 ```{python}
+reload(vis)
+```
+
+```{python}
 if verbose:
-    wf =  napari.view_image(final_image, ndisplay=3, opacity=0.5, blending='additive')
-    
-    vis.view_graph_as_colored_image(gx_all_occ, final_image.shape, wf);
+    wf =  napari.view_image(final_image, ndisplay=3, opacity=0.5, blending='additive', scale=scale)    
+    vis.view_graph_as_colored_image(gx_all_occ, final_image.shape, wf,scale=scale);
 ```
 
 ```{python}
@@ -1445,7 +1474,52 @@ gx_all_occ.nodes[(29, 303, 282)]
 ```
 
 ```{python}
+#gx_all_occ.remove_node((29, 303, 282))
+```
 
+```{python}
+tips = list(gu.get_tips(gx_all_occ))
+```
+
+```{python}
+to_prune = [prune_tip(gx_all_occ, t) for t in tips]
+```
+
+```{python}
+import operator as op_
+```
+
+```{python}
+to_prune_all = reduce(op_.or_, to_prune)
+```
+
+```{python}
+len(to_prune_all)
+```
+
+```{python}
+(29, 303, 282) in to_prune_all
+```
+
+```{python}
+gx_all_occ2 = gx_all_occ.subgraph(n for n in gx_all_occ if n not in to_prune_all)
+gx_all_occ2a = gx_all_occ.subgraph(n for n in gx_all_occ if n in to_prune_all)
+```
+
+```{python}
+if verbose:
+    wf =  napari.view_image(final_image, ndisplay=3, opacity=0.5, blending='additive', scale=scale)    
+    wf.add_image(sigma_mask, colormap='turbo',scale=scale)
+    vis.view_graph_as_colored_image(gx_all_occ2, final_image.shape, wf,scale=scale);
+    #vis.view_graph_as_colored_image(gx_all_occ2a, final_image.shape, wf,scale=scale);
+```
+
+```{python}
+
+```
+
+```{python}
+len(gx_all_occ2a)
 ```
 
 ## Разбиение области мелких отростков на субдомены (lobes)
@@ -1455,7 +1529,7 @@ gx_all_occ.nodes[(29, 303, 282)]
 ```
 
 ```{python}
-paths = vis.graph_to_paths(gx_all_occ)
+paths = vis.graph_to_paths(gx_all_occ2)
 ```
 
 ```{python}
@@ -1476,7 +1550,7 @@ for path_group in tqdm(paths2):
     for segment in path_group:
         k += 1
         for node in segment:
-            gx_all_occ.nodes[node]['id'] = k
+            gx_all_occ2.nodes[node]['id'] = k
 ```
 
 ```{python}
@@ -1508,10 +1582,10 @@ thin_mask = (sigma_mask <=1) * (final_image > 0)
 ```
 
 ```{python}
-w = napari.view_image(final_image)
-w.add_image(sigma_mask > 1, colormap='red', blending='additive', visible=True)
+w = napari.view_image(final_image, scale=scale)
+w.add_image(sigma_mask > 1, colormap='red', blending='additive', visible=True,scale=scale)
 #w.add_image(final_image >0, colormap='cyan', blending='additive', visible=True)
-w.add_image(thin_mask, colormap='magenta', blending='additive', visible=True)
+w.add_image(thin_mask, colormap='magenta', blending='additive', visible=True,scale=scale)
 ```
 
 ```{python}
@@ -1519,7 +1593,7 @@ pts = np.vstack(np.where(thin_mask)).T
 ```
 
 ```{python}
-pts
+len(pts)
 ```
 
 ```{python}
@@ -1577,13 +1651,17 @@ for kc, loc in zip(idx, tqdm(pts)):
 ```
 
 ```{python}
-w = napari.view_image(final_image)
-#w.add_image(domains_colored,opacity=0.75,channel_axis=3)
-w.add_image(domains==30,opacity=0.75,colormap='red')
+w = napari.view_image(final_image, scale=scale)
+w.add_image(domains_colored,opacity=0.75,channel_axis=3,scale=scale)
+w.add_image(domains==542,opacity=0.75,colormap='red',scale=scale)
 ```
 
 ```{python}
-data_dir
+#w.add_image(domains[31])
+```
+
+```{python}
+#data_dir
 ```
 
 ```{python}
@@ -1641,7 +1719,7 @@ seps = (domains_sep == 0) & (domains > 0)
 ```
 
 ```{python}
-np.sum(nsep), np.sum(seps)
+#np.sum(nsep), np.sum(seps)
 ```
 
 ```{python}
@@ -1669,7 +1747,85 @@ for prob in sep_probs:
 ```
 
 ```{python}
+domains.shape
+```
 
+```{python}
+dims
+```
+
+```{python}
+dims[0][0]*2
+```
+
+```{python}
+crop
+```
+
+```{python}
+stack_cropped = np.array([crop_image(plane,domain_mask, margin=10) for plane in stack])
+stack_croppedz = ndi.zoom(stack_cropped.astype(np.float32), (1, 1/downscale, 1/downscale))
+stack_croppedz *= (final_image>0)
+```
+
+```{python}
+w = napari.view_image(final_image,scale=scale)
+w.add_image(stack_croppedz,scale=scale)
+```
+
+### Создаем шаблон для модели
+
+```{python}
+def make_sponge_plus_avf(im, cmask=None,pmin=0.1, pmax=99.9):
+    if cmask is None:
+        cmask = np.ones_like(im,dtype=np.bool)
+    
+    avf = ndi.gaussian_filter(im, 0.5)
+    mn,mx = np.percentile(avf[cmask], (0.1, pmax))
+    
+    avf = (avf - mn)/(mx-mn)
+    
+    avf[~cmask] = 0
+    outx = np.zeros(im.shape + (3,))
+    #foreground_mask = dstack([foreground_mask]*3)
+    outx[cmask,2] = 1
+    outx[...,0] = avf
+    outx[~cmask,:] = 0
+    return np.clip(outx,0,1)
+
+def estimate_noise_sigma(data, is_rectified=False):
+    alpha = 0.5838
+    nd = np.ndim(data)
+    details = data
+    for ax in range(nd):
+        details = np.diff(details, axis=ax)
+    correction = 2**(0.5*nd)
+    if is_rectified:
+        correction *= alpha
+    
+    return np.std(details)/correction
+```
+
+```{python}
+def remove_small_objects(mask, min_size=25):
+    labels, nlab = ndi.label(mask)
+    objs = ndi.find_objects(labels)
+    out_mask = np.zeros_like(mask)
+    for k,o in enumerate(objs):
+        cond = labels[o]==(k+1)
+        if np.sum(cond) >= min_size:
+            out_mask[o][cond] = True
+    return out_mask
+
+def largest_region(mask):
+    labels, nlab = ndi.label(mask)
+    if nlab > 0:
+        objs = ndi.find_objects(labels)
+        sizes = [np.sum(labels[o]==k+1) for k,o in enumerate(objs)]
+        k = np.argmax(sizes)
+        return labels==k+1
+    else:
+        return mask
 ```
 
 ```{python}
@@ -1677,11 +1833,101 @@ for prob in sep_probs:
 ```
 
 ```{python}
+#gamma = 0.75
+gamma = 0.5
 
+# %time stack_avf = make_sponge_plus_avf(np.maximum(0,stack_croppedz)**gamma, final_image > 0, pmax=99) 
+```
+
+```{python}
+from imfun import ui
+```
+
+```{python}
+ui.group_maps(stack_avf, 10, colorbar=False)
+plt.tight_layout()
+```
+
+```{python}
+kcell=15
+```
+
+```{python}
+nz = len(stack_avf)
+nz
+```
+
+```{python}
+export_name = f'/home/brazhe/src/ageom-astrocytes/astroVolume3D/r3d_avf{kcell:02d}:{nz:02d}_planes-domains0.png'
+export_name
 ```
 
 ```{python}
 
+```
+
+```{python}
+sep_probs = [0, 0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1.0]
+#sep_probs = [0.01]
+```
+
+```{python}
+pts
+```
+
+```{python}
+export_path = '/home/brazhe/src/ageom-astrocytes/astroVolume3D/'
+
+for prob in tqdm(sep_probs):
+    domains_sep = nullify_boundary_pixels(domains, prob=prob)
+    seps = (domains_sep == 0) & (domains > 0)
+    nzeroed = np.sum(seps)
+    print(prob, nzeroed)
+    
+    
+    tmp_avf = stack_avf.copy()
+    tmp_avf[seps] = 0
+    rolled_avf = np.zeros((nr, nz*nc, 3))
+    for i, p in enumerate(tmp_avf):
+        rolled_avf[:,i*nc:(i+1)*nc] = p
+    
+    export_name1 = f'r3d_avf{kcell:02d}:{nz:02d}_planes-domains-pzero-{prob}.png'
+    export_name2 = f'r3d_avf{kcell:02d}:{nz:02d}_planes-domains-pzero-{prob}-rand.png'
+    
+    plt.imsave(export_path + export_name1, rolled_avf)
+    
+    
+    tmp_avf = stack_avf.copy()
+    rand_pts = np.random.permutation(pts)[:nzeroed]
+        
+    for p in rand_pts:
+        tmp_avf[tuple(p)] = 0
+        
+    rolled_avf = np.zeros((nr, nz*nc, 3))
+    for i, p in enumerate(tmp_avf):
+        rolled_avf[:,i*nc:(i+1)*nc] = p        
+        
+    plt.imsave(export_path + export_name2, rolled_avf)
+    
+    np.save(data_path.joinpath(base_name+f'small-domains-pzero={prob}.npy'),domains_sep)
+    np.save(data_path.joinpath(base_name+f'small-domains-pzero={prob}-perforates.npy'),seps)
+    
+```
+
+```{python}
+rand_pts
+```
+
+```{python}
+rand_pts[0]
+```
+
+```{python}
+
+```
+
+```{python}
+tmp_avf.shape
 ```
 
 ```{python}

@@ -41,8 +41,8 @@ def count_points_paths(paths):
     return acc
 
 
-def find_paths(G, targets, stack_shape, min_count=1, min_path_length=10):
-    paths_dict = nx.multi_source_dijkstra_path(G, targets, )
+def find_paths(G, targets, stack_shape, min_count=1, min_path_length=10, **kwargs):
+    paths_dict = nx.multi_source_dijkstra_path(G, targets, **kwargs)
     
     #reverse order of points in paths, so that they start at tips 
     paths_dict = {path[-1]:path[::-1] for path in paths_dict.values() if len(path) >= min_path_length}
@@ -82,8 +82,7 @@ def filter_graph(graph, func = lambda node: True ):
     "returns a view on graph for the nodes satisfying the condition defined by func(node)"
     good_nodes = (node for node in graph if func(graph.nodes[node]))
     return graph.subgraph(good_nodes)
-
-
+     
 def get_attrs_by_nodes(G, arr, func=None):
     nodesG = np.array(G.nodes())
     attrs = arr[nodesG[:,0], nodesG[:,1], nodesG[:,2]]
