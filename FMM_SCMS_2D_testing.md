@@ -883,10 +883,11 @@ astro.morpho.eigh = np.linalg.eigh
 
 ```{code-cell} ipython3
 #sigmas = [1, 1.5, 2, 3, 4, 6, 8, 12]
-sigmas = 2**np.arange(0,3.1,0.25)
+sigmas = 2**np.arange(0,4.1,0.5)
 
 id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
 sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
+sigmas
 ```
 
 ```{code-cell} ipython3
@@ -896,7 +897,6 @@ sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
 ```{code-cell} ipython3
 sato_coll ={sigma:astro.morpho.sato2d(img, sigma)*sigma**2 for sigma in tqdm(sigmas)}
 vvg_coll = {sigma:get_VVg(img, sigma)[2] for sigma in tqdm(sigmas)}
-
 ```
 
 ```{code-cell} ipython3
@@ -1091,7 +1091,6 @@ counts = count_occurences(Gtt, full_mask.shape)
 ```
 
 ```{code-cell} ipython3
-
 #Gtt.nodes[pkeys[1]]
 ```
 
@@ -1168,19 +1167,85 @@ for path in plot_paths2:
 ---
 
 ```{code-cell} ipython3
-
+def scramble_img(img, mask=None):
+    if mask is None:
+        mask = np.ones(img.shape,bool)
+    pts = np.array(np.where(mask)).T
+    out = np.zeros_like(img)
+    for source,target in zip(np.random.permutation(pts), pts):
+        out[tuple(target)]=img[tuple(source)]
+    return out
 ```
 
 ```{code-cell} ipython3
-
+#uc.utils.scramble.scramble_data()
 ```
 
 ```{code-cell} ipython3
-
+img_oversmooth = ndi.gaussian_filter(img, 16)
+plt.imshow(img_oversmooth); plt.colorbar()
 ```
 
 ```{code-cell} ipython3
+img_delta = np.where(full_mask, img-img_oversmooth, img)
+```
 
+```{code-cell} ipython3
+plt.imshow(img_delta); plt.colorbar()
+```
+
+```{code-cell} ipython3
+img_rand = scramble_img(img)
+#img_rand[full_mask] += img_oversmooth[full_mask]
+#img_rand[~full_mask] = img[~full_mask]
+#img_rand = np.clip(img_rand, 0, 255)
+plt.imshow(img_rand, cmap='gray',vmin=0,vmax=255)
+```
+
+```{code-cell} ipython3
+#plt.hist(np.ravel(img_rand),50);
+```
+
+```{code-cell} ipython3
+sato_coll_r ={sigma:astro.morpho.sato2d(img_rand, sigma)*sigma**2 for sigma in tqdm(sigmas)}
+```
+
+```{code-cell} ipython3
+masks_r = {}
+for sigma in tqdm(sigmas):
+    sato = sato_coll_r[sigma]
+    # multiplication by square root of sigma here is pure heuristics
+    threshold = threshold_li(sato[sato>0])#*sigma**0.5
+    #print(sigma, threshold, np.sum(sato > threshold), sigma*32)
+    masks_r[sigma] = remove_small_objects(full_mask*(sato > threshold), min_size=int(sigma**2))
+#masks[sigmas[-1]] = uc.masks.select_overlapping(masks[sigmas[-1]], soma_mask)
+```
+
+```{code-cell} ipython3
+ui.group_maps([uc.clip_outliers(sp) 
+               for sigma,sp in sato_coll_r.items()], 
+              titles=[f"σ={sigma:1.1f}" for sigma in sigmas],
+              imkw=dict(cmap='plasma'),
+              colorbar=False, figscale=3)
+```
+
+```{code-cell} ipython3
+plt.figure()
+plt.hist(sato_coll[sigmas[4]][full_mask],50, density=True, histtype='step');
+plt.hist(sato_coll_r[sigmas[4]][full_mask],50, density=True, histtype='step');
+```
+
+```{code-cell} ipython3
+shrunk_mask = ndi.binary_erosion(full_mask, iterations=50)
+```
+
+```{code-cell} ipython3
+plt.imshow(sato_coll_r[sigmas[-1]])
+plt.contour(full_mask, colors=['r'])
+```
+
+```{code-cell} ipython3
+plt.imshow(sato_coll[sigmas[-1]] > np.percentile(sato_coll_r[sigmas[-1]][full_mask],99))
 ```
 
 ```{code-cell} ipython3
@@ -1214,7 +1279,7 @@ plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
-jerman_best_sigma = np.argmax([v*masks[sigma] for sigma,v in jerman_coll.items()],0) + 1
+jerman_best_sigma = np.argmax([v for sigma,v in jerman_coll.items()],0) + 1
 jerman_best_sigma[~full_mask] = 0
 jerman_best_sigma = np.ma.masked_where(~full_mask, jerman_best_sigma)
 ```
@@ -1260,7 +1325,7 @@ sigmas
 
 ```{code-cell} ipython3
 plt.figure(figsize=(6,6))
-sigma_i = 8
+sigma_i = sigmas[-1]
 vvg_i = vvg_coll[sigma_i]
 sato_i = sato_coll[sigma_i]
 img_s = ndi.gaussian_filter(img, sigma_i)
@@ -1315,24 +1380,45 @@ plt.imshow(vvg_i)
 ```
 
 ```{code-cell} ipython3
-visited=set()
-pts = np.array(np.where(sato_i>th1)).T
-pts_sparse = np.random.permutation(pts)[:1000]
-paths_gvv = [economic_gd(vvg_i, p, visited=visited) for p in tqdm(pts)]
+def gd_skeleton(grad, mask, verbose=False):
+    # todo: count occurences
+    visited=set()
+    pts = np.array(np.where(mask)).T
+    paths_gvv = [economic_gd(grad, p, visited=visited) for p in tqdm(pts, disable=not verbose)]
 
-Gtt = nx.DiGraph()
-for path in tqdm(paths_gvv):
-    Gtt.add_edges_from(list(itt.pairwise(map(tuple, path[::-1]))))
-paths_x = vis.graph_to_paths(Gtt)
-len(paths_x)
+    Gtt = nx.DiGraph()
+    for path in tqdm(paths_gvv, disable=not verbose):
+        Gtt.add_edges_from(list(itt.pairwise(map(tuple, path[::-1]))))
+    #paths_x = vis.graph_to_paths(Gtt)
+    endpoints = np.array([p for p in gu.get_roots(Gtt) if mask[tuple(p)]])
+    #endpoints = np.array([p for p in paths_x.keys() if sato_i[tuple(p)]>th1])
+    return endpoints
 ```
 
 ```{code-cell} ipython3
-endpoints = np.array([p for p in paths_x.keys() if sato_i[tuple(p)]>th1])
+# visited=set()
+# pts = np.array(np.where(sato_i>th1)).T
+# pts_sparse = np.random.permutation(pts)[:1000]
+# paths_gvv = [economic_gd(vvg_i, p, visited=visited) for p in tqdm(pts)]
+
+# Gtt = nx.DiGraph()
+# for path in tqdm(paths_gvv):
+#     Gtt.add_edges_from(list(itt.pairwise(map(tuple, path[::-1]))))
+# paths_x = vis.graph_to_paths(Gtt)
+# len(paths_x)
 ```
 
 ```{code-cell} ipython3
-len(endpoints)
+#endpoints = np.array([p for p in paths_x.keys() if sato_i[tuple(p)]>th1])
+endpoints = gd_skeleton(vvg_i, sato_i > th1)
+```
+
+```{code-cell} ipython3
+ridge_coll = {sigma: gd_skeleton(vvg_coll[sigma],masks[sigma]) for sigma in tqdm(sigmas)}
+```
+
+```{code-cell} ipython3
+
 ```
 
 ```{code-cell} ipython3
@@ -1342,14 +1428,229 @@ for p in endpoints:
 ```
 
 ```{code-cell} ipython3
-
-plt.figure()
+plt.figure(figsize=(9,9))
 plt.imshow(img, cmap='gray')
-plt.plot(endpoints[:,1],endpoints[:,0],'r,')
+plt.plot(*ridge_coll[sigmas[-1]].T[::-1],'r.',ms=2)
+plt.plot(*ridge_coll[sigmas[-2]].T[::-1],'g.',ms=2)
+plt.plot(*ridge_coll[sigmas[-3]].T[::-1],'b.',ms=2)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+list(map(len,ridge_coll.values()))
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(9,9))
+plt.imshow(img, cmap='gray')
+plt.plot(*ridge_coll[sigmas[0]].T[::-1],'r+',ms=4)
+plt.plot(*ridge_coll[sigmas[1]].T[::-1],'g.',ms=2)
+plt.plot(*ridge_coll[sigmas[3]].T[::-1],'bo',ms=2, mfc='none')
+plt.plot(*ridge_coll[sigmas[4]].T[::-1],'y*',ms=2, mfc='none')
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+len(sigmas)
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(9,9))
+plt.imshow(img, cmap='gray')
+plt.plot(*ridge_coll[sigmas[4]].T[::-1],'r+',ms=4)
+plt.plot(*ridge_coll[sigmas[5]].T[::-1],'g.',ms=2)
+plt.plot(*ridge_coll[sigmas[6]].T[::-1],'bo',ms=2, mfc='none')
+plt.plot(*ridge_coll[sigmas[7]].T[::-1],'y*',ms=2, mfc='none')
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+kdt0 = scipy.spatial.KDTree(ridge_coll[sigmas[0]])
+kdt1 = scipy.spatial.KDTree(ridge_coll[sigmas[1]])
+kdt2 = scipy.spatial.KDTree(ridge_coll[sigmas[2]])
+kdt3 = scipy.spatial.KDTree(ridge_coll[sigmas[3]])
+```
+
+```{code-cell} ipython3
+kd_trees = [scipy.spatial.KDTree(ridge_coll[sigma]) for sigma in sigmas]
+```
+
+```{code-cell} ipython3
+list(itt.pairwise('abc'))
+```
+
+```{code-cell} ipython3
+queries = [(t2, t2.query(t1.data,distance_upper_bound=1.5)[1])
+           for (t1,t2),sigma in zip(itt.pairwise(kd_trees), sigmas)]
+```
+
+```{code-cell} ipython3
+# x01a = kdt1.query(kdt0.data,k=1,distance_upper_bound=sigmas[0])
+# x12a = kdt2.query(kdt1.data,k=1,distance_upper_bound=sigmas[1])
+# x23a = kdt3.query(kdt2.data,k=1,distance_upper_bound=sigmas[2])
+```
+
+```{code-cell} ipython3
+#len(x01a)
+```
+
+```{code-cell} ipython3
+#len(kdt0.data), len(kdt1.data), list(map(len, x01a))
+```
+
+```{code-cell} ipython3
+#x01a[0][:10], x01a[1][:10]
+```
+
+```{code-cell} ipython3
+#kdt0.data[0], kdt1.data[1626]
+```
+
+```{code-cell} ipython3
+#kdt1.data[0], kdt0.data[1626]
+```
+
+```{code-cell} ipython3
+#kdt1.data[3], kdt0.data[2412]
 ```
 
 ```{code-cell} ipython3
 
+```
+
+```{code-cell} ipython3
+# x01 = kdt0.query_ball_tree(kdt1, sigmas[0]/2)
+# x12 = kdt1.query_ball_tree(kdt2, sigmas[1]/2)
+# x23 = kdt2.query_ball_tree(kdt3, sigmas[2]/2)
+# #x34 = kdt3.query_ball_tree(kdt4, sigmas[3]/2)
+```
+
+```{code-cell} ipython3
+#x23[:12]
+```
+
+```{code-cell} ipython3
+G1 = nx.DiGraph()
+```
+
+```{code-cell} ipython3
+for k,(t2,q) in enumerate(queries):
+    for i,j in enumerate(q):
+        if j < len(t2.data):
+            ploc = tuple(kd_trees[k+1].data[j])
+            cloc = tuple(kd_trees[k].data[i])
+            G1.add_edge((k+1,)+ploc,(k,)+cloc)
+```
+
+```{code-cell} ipython3
+len(G1.edges)
+```
+
+```{code-cell} ipython3
+tips = gu.get_tips(G1)
+```
+
+```{code-cell} ipython3
+mm_paths = [follow_to_root(G1, t) for t in tips]
+```
+
+```{code-cell} ipython3
+for n,cargo in G1.nodes.items():
+    level = n[0]
+    loc = tuple(map(int, n[1:]))
+    cargo['contrast'] = sato_coll[sigmas[level]][loc]
+    cargo['img'] = img[loc]
+    
+```
+
+```{code-cell} ipython3
+path = mm_paths[1000]
+[(p,G1.nodes[p]['contrast']) for p in path]
+```
+
+```{code-cell} ipython3
+backbone = []
+for path in mm_paths:
+    kbest = np.argmax([G1.nodes[p]['contrast'] for p in path])
+    n = path[kbest]
+    if len(path) > 1:
+        backbone.append(tuple(n))
+```
+
+```{code-cell} ipython3
+backbone = np.array(backbone)
+```
+
+```{code-cell} ipython3
+len(sigmas)
+```
+
+```{code-cell} ipython3
+np.sum(backbone[:,0]>=8)
+```
+
+```{code-cell} ipython3
+backbone[:,0]
+```
+
+```{code-cell} ipython3
+len(backbone)
+```
+
+```{code-cell} ipython3
+#[p[-1] for p in mm_paths]
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+%matplotlib qt
+```
+
+```{code-cell} ipython3
+# plt.plot(*kdt0.data.T, 'ob', alpha=0.1, ms=3)
+plt.figure()
+plt.imshow(img, cmap='gray')
+plt.plot(*kd_trees[-1].data.T[::-1], 'sy', alpha=0.5, ms=8,mfc='none')
+for u,v in G1.edges:
+    p = u[1:]
+    c = v[1:]
+    plt.plot([p[1],c[1]], [p[0],c[0]], 'm.-')
+```
+
+```{code-cell} ipython3
+# plt.plot(*kdt0.data.T, 'ob', alpha=0.1, ms=3)
+plt.figure()
+plt.imshow(img, cmap='gray')
+plt.scatter(*backbone[:,1:].T[::-1], c=backbone[:,0])
+#bx = backbone[backbone[:,0]>=len(sigmas)-2]
+#plt.plot(*bx[:,1:].T[::-1],'r.')
+```
+
+```{code-cell} ipython3
+len(bx)
+```
+
+```{code-cell} ipython3
+%matplotlib inline
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+kdt0.data[3], kdt1.data[14]
 ```
 
 ```{code-cell} ipython3
@@ -1412,7 +1713,7 @@ mask_x = (mask_opt*(img > th_x)*(sato_i > th1))#, sigma_i**2)
 #mask_x = (mask_opt*(sato_i > th1))#, sigma_i**2)
 #mask_x = (mask_opt*(img > th_y)*(sato_i > th1))
 plt.contour(mask_x, colors=['lime'])
-plt.contour(mask_centerline2, colors='r')
+plt.contour(mask_centerline2*(img>th_x), colors='r')
 plt.tight_layout()
 ```
 
@@ -1422,7 +1723,7 @@ dd = skfmm.travel_time(1.0 - (mask_centerline2), mask_x)
 
 ```{code-cell} ipython3
 #mask_travel = uc.masks.threshold_object_size(dd < sigma_i, sigma_i**2)
-mask_travel = np.array((dd < 1.5*sigma_i))*(~dd.mask)
+mask_travel = np.array((dd < sigma_i))*(~dd.mask)
 #mask_travel = ndi.binary_opening(ndi.binary_closing(mask_travel))
 mask_travel = uc.masks.threshold_object_size(mask_travel, (sigma_i)**2)
 
