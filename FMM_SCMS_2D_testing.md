@@ -355,6 +355,28 @@ def calc_trajectory_basic(field, pts0, n_iter=10, tol=1e-3,
 ```
 
 ```{code-cell} ipython3
+def get_VVg(img, sigma):
+    H,g  = hessian_by_dog(img, sigma=sigma, rel_scale=None, \
+                            return_gradient=True) # RC order by default
+
+    g = sigma*np.stack(g,axis=2)# shouldn't I do sigma/sqrt(2) here?
+    lams,Vf = hessian_eigen_decomp(H)
+
+    # directions orthogonal to slowest change in brightness (along vessel)
+    VV = np.einsum('...ij,...jk', Vf[...,1:], np.einsum('...ji', Vf[...,1:]))
+    
+    # gradient projections onto Hessian-based direction
+    VVg = np.einsum('...ij,...j->...i', VV, g)
+    
+    VVg_mag = np.linalg.norm(VVg,axis=-1)    
+
+    pth = np.percentile(VVg_mag, 99)
+    VVg_clipped = VVg/pth
+    VVg_mag2 = np.linalg.norm(VVg_clipped,axis=-1)
+    return VVg, VVg_clipped, VVg_mag2
+```
+
+```{code-cell} ipython3
 import skfmm
 from skimage.morphology import dilation, skeletonize, flood
 from skimage import measure
@@ -381,8 +403,8 @@ img.min(), img.max()
 
 ```{code-cell} ipython3
 # I wonder if it's downsampled. Maybe should work on original instead
-img = tifffile.imread('astro_3wk-both1-grn-raw.pic-maxproj.tif')
-#img = tifffile.imread('astro_4wk-ly24-raw.pic-ds_1-maxproj.tif')
+#img = tifffile.imread('astro_3wk-both1-grn-raw.pic-maxproj.tif')
+img = tifffile.imread('astro_4wk-ly24-raw.pic-ds_1-maxproj.tif')
 ```
 
 ```{code-cell} ipython3
@@ -530,6 +552,153 @@ mask = remove_small_objects(full_mask*(sato0 > np.mean(sato0[~full_mask])),
 #mask = img > 10
 ```
 
+#### Let's quick-check the zoo of alternative approaches
+
+```{code-cell} ipython3
+import skimage as ski
+```
+
+```{code-cell} ipython3
+reload(astro.morpho)
+```
+
+```{code-cell} ipython3
+astro.morpho.eigh = np.linalg.eigh
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+sato_ski = ski.filters.sato(img, sigmas=[sigma0], black_ridges=False)
+sato_dog = astro.morpho.sato2d(img, sigma0, hessian_variant='dog', gamma12=0.5)
+sato_hos = astro.morpho.sato2d(img, sigma0, hessian_variant='gradient_of_smoothed') # note, default behavior in scikit-image will change
+```
+
+```{code-cell} ipython3
+from imfun import ui
+```
+
+```{code-cell} ipython3
+ui.group_maps([sato_ski, sato_dog, sato_hos], figscale=5, titles=['Scikit', 'DoG', 'Scikit-2'], colorbar=False)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+ui.group_maps([sato_ski, sato_dog*sigma0**2, sato_hos*sigma0**2], figscale=5, titles=['Scikit', 'DoG', 'DoS'],colorbar=False)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+H1 = ski.feature.corner.hessian_matrix(img, sigma=sigma0, use_gaussian_derivatives=True)
+ui.group_maps(H1, colorbar=False, figscale=5)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+H2 = astro.morpho.hessian_by_dog(img, sigma=sigma0)
+ui.group_maps(H2, colorbar=False, figscale=5)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+plt.imshow(H2[0]-H1[0])
+```
+
+```{code-cell} ipython3
+w1 = ski.feature.corner.hessian_matrix_eigvals(H1)
+ui.group_maps(w1, colorbar=False, figscale=5); plt.tight_layout()
+```
+
+```{code-cell} ipython3
+Hmat = astro.morpho._symmetric_image(H2)
+w2,_ = np.linalg.eigh(Hmat)
+ui.group_maps(np.moveaxis(w2, -1,0)[::-1], colorbar=False, figscale=5); plt.tight_layout()
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(5,5),dpi=150)
+plt.imshow(sato_ski)
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(5,5),dpi=150)
+plt.imshow(-np.minimum(w1[1],0))
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(5,5),dpi=150)
+plt.imshow(-np.minimum(w2[...,0],0))
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+plt.imshow(uc.clip_outliers(w1[1]-w2[...,0]))
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+plt.imshow(ski.filters.frangi(img, sigmas=2**np.arange(0,3.1,0.25), black_ridges=False))
+```
+
+```{code-cell} ipython3
+plt.imshow(ski.filters.hessian(img, sigmas=2**np.arange(0,3.1,0.25), black_ridges=False))
+```
+
+```{code-cell} ipython3
+plt.imshow(ski.filters.meijering(img, 2**np.arange(0,3.1,0.25), black_ridges=False))
+```
+
+```{code-cell} ipython3
+plt.imshow(ski.filters.sato(img, 2**np.arange(0,3.1,0.25), black_ridges=False))
+```
+
+```{code-cell} ipython3
+plt.imshow(np.mean([astro.morpho.jerman2d(img, sigma,tau=0.5)*sigma**0.5 for sigma in 2**np.arange(0,3.1,0.25)],0))
+plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.imshow(np.mean([astro.morpho.jerman2d(img, sigma,tau=0.75)*sigma**0.5 for sigma in 2**np.arange(0,3.1,0.25)],0))
+plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.imshow(np.mean([astro.morpho.jerman2d(img, sigma,tau=1)*sigma**0.5 for sigma in 2**np.arange(0,3.1,0.25)],0))
+plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(5,5),dpi=200)
+scontrast = np.mean([ski.filters.sato(img, [sigma],black_ridges=False)/sigma**0.5/(0.05 + uc.utils.rescale(get_VVg(img, sigma)[2]))
+                   for sigma in 2**np.arange(0,3.1,0.25)],
+                  0)
+plt.imshow(uc.clip_outliers(scontrast), cmap='plasma')
+plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(5,5),dpi=200)
+jcontrast = np.mean([astro.morpho.jerman2d(img, sigma,tau=0.85)/(0.05 + uc.utils.rescale(get_VVg(img, sigma)[2]))
+                   for sigma in 2**np.arange(0,3.1,0.25)],
+                  0)
+plt.imshow(uc.clip_outliers(jcontrast), cmap='plasma')
+plt.colorbar()
+```
+
+### Continue
+
+```{code-cell} ipython3
+
+```
+
 ```{code-cell} ipython3
 plt.imshow((sato0>0)*full_mask)
 plt.contour(mask, colors=['r'])
@@ -546,28 +715,7 @@ plt.imshow(sato0)
 ```
 
 ```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-def get_VVg(img, sigma):
-    H,g  = hessian_by_dog(img, sigma=sigma, rel_scale=None, \
-                            return_gradient=True) # RC order by default
-
-    g = sigma*np.stack(g,axis=2)
-    lams,Vf = hessian_eigen_decomp(H)
-    
-    VV = np.einsum('...ij,...jk', Vf[...,1:], np.einsum('...ji', Vf[...,1:]))
-    
-    # gradient projections onto Hessian-based direction
-    VVg = np.einsum('...ij,...j->...i', VV, g)
-    
-    VVg_mag = np.linalg.norm(VVg,axis=-1)    
-
-    pth = np.percentile(VVg_mag, 99)
-    VVg_clipped = VVg/pth
-    VVg_mag2 = np.linalg.norm(VVg_clipped,axis=-1)
-    return VVg, VVg_clipped, VVg_mag2
+sigma0
 ```
 
 ```{code-cell} ipython3
@@ -883,7 +1031,7 @@ astro.morpho.eigh = np.linalg.eigh
 
 ```{code-cell} ipython3
 #sigmas = [1, 1.5, 2, 3, 4, 6, 8, 12]
-sigmas = 2**np.arange(0,4.1,0.5)
+sigmas = 2**np.arange(0, 4, 0.25)
 
 id2sigma = {i+1:sigma for i, sigma in enumerate(sigmas)} # shift by one, so that zero doesn't correspond to a cell
 sigma2id = {sigma:i+1 for i, sigma in enumerate(sigmas)}
@@ -895,12 +1043,16 @@ sigmas
 ```
 
 ```{code-cell} ipython3
-sato_coll ={sigma:astro.morpho.sato2d(img, sigma)*sigma**2 for sigma in tqdm(sigmas)}
+sato_coll ={sigma:astro.morpho.sato2d(img, sigma, gamma12=0.1, hessian_variant='dog')*sigma**2 for sigma in tqdm(sigmas)}
 vvg_coll = {sigma:get_VVg(img, sigma)[2] for sigma in tqdm(sigmas)}
 ```
 
 ```{code-cell} ipython3
-jerman_coll = {sigma:astro.morpho.jerman2d(img, sigma, tau=0.5) for sigma in tqdm(sigmas)}
+jerman_coll = {sigma:astro.morpho.jerman2d(img, sigma, tau=0.85, ) for sigma in tqdm(sigmas)}
+```
+
+```{code-cell} ipython3
+plt.imshow(sato_coll[sigmas[-2]])
 ```
 
 ```{code-cell} ipython3
@@ -919,6 +1071,11 @@ masks[sigmas[-1]] = uc.masks.select_overlapping(masks[sigmas[-1]], soma_mask)
 ```
 
 ```{code-cell} ipython3
+ui.group_maps(list(masks.values()), colorbar=False, imkw=dict(interpolation='nearest'), figscale=5)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
 masksj = {}
 for sigma in tqdm(sigmas):
     jerman = jerman_coll[sigma]
@@ -930,6 +1087,11 @@ masksj[sigmas[-1]] = uc.masks.select_overlapping(masksj[sigmas[-1]], soma_mask)
 ```
 
 ```{code-cell} ipython3
+ui.group_maps(list(masksj.values()), colorbar=False, imkw=dict(interpolation='nearest'), figscale=5)
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
 #plt.imshow(masksj[sigmas[-1]])
 ```
 
@@ -938,12 +1100,13 @@ masksj[sigmas[-1]] = uc.masks.select_overlapping(masksj[sigmas[-1]], soma_mask)
 ```
 
 ```{code-cell} ipython3
-speed_coll = {sigma:masks[sigma]*sato_coll[sigma]/(0.05 + uc.utils.rescale(vvg_coll[sigma])) 
+# divide by σ^0.5 to dampen large-scale structures
+speed_coll = {sigma:sato_coll[sigma]/(0.05 + uc.utils.rescale(vvg_coll[sigma])) 
               for sigma in sigmas}
 ```
 
 ```{code-cell} ipython3
-speed_collj = {sigma:full_mask*jerman_coll[sigma]/(0.01 + uc.utils.rescale(vvg_coll[sigma])) 
+speed_collj = {sigma:masksj[sigma]*jerman_coll[sigma]/(0.01 + uc.utils.rescale(vvg_coll[sigma])) 
               for sigma in sigmas}
 ```
 
@@ -952,7 +1115,7 @@ dynamic_ranges = {sigma:(np.max(v)-np.min([v>0])) for sigma,v in sato_coll.items
 ```
 
 ```{code-cell} ipython3
-plt.plot(sigmas, [np.max(v) for v in sato_coll.values()], 'sk-')
+#plt.plot(sigmas, [np.max(v) for v in sato_coll.values()], 'sk-')
 plt.plot(sigmas, dynamic_ranges.values(), 'o--')
 plt.plot(sigmas, [np.percentile(v[v>0],99) for v in sato_coll.values()],'o-' )
 ```
@@ -997,14 +1160,15 @@ speed_multiscalej = sum((ndi.gaussian_filter(v,sigmas[0]) for v in speed_collj.v
 
 ```{code-cell} ipython3
 plt.figure(figsize=(8,8))
-plt.imshow(speed_multiscale,cmap='plasma')
-plt.tight_layout()
+plt.imshow(speed_multiscale,cmap='plasma');
+plt.colorbar()
+#plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
 plt.figure(figsize=(8,8))
-plt.imshow(speed_multiscalej,cmap='plasma')
-plt.tight_layout()
+plt.imshow(speed_multiscalej,cmap='plasma'); plt.colorbar()
+#plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
@@ -1014,8 +1178,17 @@ plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
-#tt_ms = skfmm.travel_time(1.-soma_mask, speed_multiscale)
-tt_ms = skfmm.travel_time(1.-soma_mask, speed_multiscalej)
+speed_multiscale_combo = speed_multiscalej/np.max(speed_multiscalej) + speed_multiscale/np.max(speed_multiscale)
+```
+
+```{code-cell} ipython3
+plt.imshow(speed_multiscale_combo, cmap='plasma')
+```
+
+```{code-cell} ipython3
+tt_ms = skfmm.travel_time(1.-soma_mask, speed_multiscale)
+#tt_ms = skfmm.travel_time(1.-soma_mask, speed_multiscalej)
+#tt_ms = skfmm.travel_time(1.-soma_mask, speed_multiscale_combo)
 plt.imshow(tt_ms,cmap='Spectral',vmin=0,vmax=np.percentile(tt_ms[~tt_ms.mask], 95))
 ```
 
@@ -1109,7 +1282,7 @@ logcounts = np.log10(1 + counts)
 ```{code-cell} ipython3
 plt.figure(figsize=(8,8))
 plt.imshow(img, cmap='gray')
-plt.imshow(np.ma.masked_less_equal(logcounts,np.log10(5)),interpolation='nearest',cmap='Reds')
+plt.imshow(np.ma.masked_less_equal(logcounts,np.log10(10)),interpolation='nearest',cmap='Reds')
 plt.tight_layout()
 ```
 
@@ -1207,7 +1380,7 @@ plt.imshow(img_rand, cmap='gray',vmin=0,vmax=255)
 ```
 
 ```{code-cell} ipython3
-sato_coll_r ={sigma:astro.morpho.sato2d(img_rand, sigma)*sigma**2 for sigma in tqdm(sigmas)}
+sato_coll_r ={sigma:astro.morpho.sato2d(img_rand, sigma, gamma12=0.1, hessian_variant='dog')*sigma**2 for sigma in tqdm(sigmas)}
 ```
 
 ```{code-cell} ipython3
@@ -1245,7 +1418,7 @@ plt.contour(full_mask, colors=['r'])
 ```
 
 ```{code-cell} ipython3
-plt.imshow(sato_coll[sigmas[-1]] > np.percentile(sato_coll_r[sigmas[-1]][full_mask],99))
+plt.imshow(sato_coll[sigmas[1]] > np.percentile(sato_coll_r[sigmas[1]][full_mask],99))
 ```
 
 ```{code-cell} ipython3
@@ -1273,7 +1446,8 @@ sato_best_sigma = np.ma.masked_where(~full_mask, sato_best_sigma)
 ```{code-cell} ipython3
 ui.group_maps([sato_best_sigma==i+1 for i in range(len(sigmas))],
               5,
-              titles=sigmas, 
+              titles=[f'σ={s:1.1f}' for s in sigmas], 
+              imkw=dict(interpolation='nearest'),
               figscale=5, colorbar=False)
 plt.tight_layout()
 ```
@@ -1329,6 +1503,7 @@ sigma_i = sigmas[-1]
 vvg_i = vvg_coll[sigma_i]
 sato_i = sato_coll[sigma_i]
 img_s = ndi.gaussian_filter(img, sigma_i)
+mask_i = masks[sigma_i]
 
 th0 = np.percentile(sato_i[(~full_mask)*(sato_i>0)],95)
 th1 = threshold_li(sato_i[sato_i>0])
@@ -1340,8 +1515,8 @@ plt.contour(sato_i, levels=sorted([th1, 250]), colors=['m', 'r'])
 
 mask_centerline = (sato_i > np.percentile(sato_i[sato_i > th1], 50))\
                    *(vvg_i < np.percentile(vvg_i[sato_i>th1],25))
-mask_centerline = skeletonize(mask_centerline)
-mask_skel = skeletonize(sato_i > th1)
+mask_centerline = skeletonize(mask_centerline*mask_i)
+mask_skel = skeletonize(mask_i)
 
 plt.imshow(np.dstack([mask_centerline*1.0, 
                       mask_skel, 
@@ -1441,13 +1616,13 @@ list(map(len,ridge_coll.values()))
 ```
 
 ```{code-cell} ipython3
-plt.figure(figsize=(9,9))
-plt.imshow(img, cmap='gray')
-plt.plot(*ridge_coll[sigmas[0]].T[::-1],'r+',ms=4)
-plt.plot(*ridge_coll[sigmas[1]].T[::-1],'g.',ms=2)
-plt.plot(*ridge_coll[sigmas[3]].T[::-1],'bo',ms=2, mfc='none')
-plt.plot(*ridge_coll[sigmas[4]].T[::-1],'y*',ms=2, mfc='none')
-plt.tight_layout()
+# plt.figure(figsize=(9,9))
+# plt.imshow(img, cmap='gray')
+# plt.plot(*ridge_coll[sigmas[0]].T[::-1],'r+',ms=4)
+# plt.plot(*ridge_coll[sigmas[1]].T[::-1],'g.',ms=2)
+# plt.plot(*ridge_coll[sigmas[3]].T[::-1],'bo',ms=2, mfc='none')
+# plt.plot(*ridge_coll[sigmas[4]].T[::-1],'y*',ms=2, mfc='none')
+# plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
@@ -1455,20 +1630,20 @@ len(sigmas)
 ```
 
 ```{code-cell} ipython3
-plt.figure(figsize=(9,9))
-plt.imshow(img, cmap='gray')
-plt.plot(*ridge_coll[sigmas[4]].T[::-1],'r+',ms=4)
-plt.plot(*ridge_coll[sigmas[5]].T[::-1],'g.',ms=2)
-plt.plot(*ridge_coll[sigmas[6]].T[::-1],'bo',ms=2, mfc='none')
-plt.plot(*ridge_coll[sigmas[7]].T[::-1],'y*',ms=2, mfc='none')
-plt.tight_layout()
+# plt.figure(figsize=(9,9))
+# plt.imshow(img, cmap='gray')
+# plt.plot(*ridge_coll[sigmas[4]].T[::-1],'r+',ms=4)
+# plt.plot(*ridge_coll[sigmas[5]].T[::-1],'g.',ms=2)
+# plt.plot(*ridge_coll[sigmas[6]].T[::-1],'bo',ms=2, mfc='none')
+# plt.plot(*ridge_coll[sigmas[7]].T[::-1],'y*',ms=2, mfc='none')
+# plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
-kdt0 = scipy.spatial.KDTree(ridge_coll[sigmas[0]])
-kdt1 = scipy.spatial.KDTree(ridge_coll[sigmas[1]])
-kdt2 = scipy.spatial.KDTree(ridge_coll[sigmas[2]])
-kdt3 = scipy.spatial.KDTree(ridge_coll[sigmas[3]])
+# kdt0 = scipy.spatial.KDTree(ridge_coll[sigmas[0]])
+# kdt1 = scipy.spatial.KDTree(ridge_coll[sigmas[1]])
+# kdt2 = scipy.spatial.KDTree(ridge_coll[sigmas[2]])
+# kdt3 = scipy.spatial.KDTree(ridge_coll[sigmas[3]])
 ```
 
 ```{code-cell} ipython3
@@ -1570,19 +1745,26 @@ path = mm_paths[1000]
 
 ```{code-cell} ipython3
 backbone = []
+backbone_smallest = []
 for path in mm_paths:
     kbest = np.argmax([G1.nodes[p]['contrast'] for p in path])
     n = path[kbest]
     if len(path) > 1:
         backbone.append(tuple(n))
+        backbone_smallest.append(tuple(path[0]))
 ```
 
 ```{code-cell} ipython3
 backbone = np.array(backbone)
+backbone_smallest = np.array(backbone_smallest)
 ```
 
 ```{code-cell} ipython3
-len(sigmas)
+backbone[:5]
+```
+
+```{code-cell} ipython3
+backbone_smallest[:5]
 ```
 
 ```{code-cell} ipython3
@@ -1606,35 +1788,126 @@ len(backbone)
 ```
 
 ```{code-cell} ipython3
-%matplotlib qt
+#%matplotlib qt
+```
+
+```{code-cell} ipython3
+# # plt.plot(*kdt0.data.T, 'ob', alpha=0.1, ms=3)
+# plt.figure()
+# plt.imshow(img, cmap='gray')
+# plt.plot(*kd_trees[-1].data.T[::-1], 'sy', alpha=0.5, ms=8,mfc='none')
+# for u,v in G1.edges:
+#     p = u[1:]
+#     c = v[1:]
+#     plt.plot([p[1],c[1]], [p[0],c[0]], 'm.-')
 ```
 
 ```{code-cell} ipython3
 # plt.plot(*kdt0.data.T, 'ob', alpha=0.1, ms=3)
-plt.figure()
+plt.figure(figsize=(9,9))
 plt.imshow(img, cmap='gray')
-plt.plot(*kd_trees[-1].data.T[::-1], 'sy', alpha=0.5, ms=8,mfc='none')
-for u,v in G1.edges:
-    p = u[1:]
-    c = v[1:]
-    plt.plot([p[1],c[1]], [p[0],c[0]], 'm.-')
+#plt.plot(*backbone_smallest[:,1:].T[::-1], 'm.')
+plt.scatter(*backbone_smallest[:,1:].T[::-1], c=backbone[:,0],s=5)
 ```
 
 ```{code-cell} ipython3
 # plt.plot(*kdt0.data.T, 'ob', alpha=0.1, ms=3)
-plt.figure()
+plt.figure(figsize=(9,9))
 plt.imshow(img, cmap='gray')
-plt.scatter(*backbone[:,1:].T[::-1], c=backbone[:,0])
+plt.scatter(*backbone[:,1:].T[::-1], c=backbone[:,0],s=5)
 #bx = backbone[backbone[:,0]>=len(sigmas)-2]
 #plt.plot(*bx[:,1:].T[::-1],'r.')
 ```
 
 ```{code-cell} ipython3
-len(bx)
+#from scipy.spatial import Voronoi, voronoi_plot_2d
+```
+
+```{code-cell} ipython3
+#vor = Voronoi(backbone_smallest[:,1:])
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+all_pts = np.array(np.where(full_mask)).T
+```
+
+```{code-cell} ipython3
+full_tree = scipy.spatial.KDTree(all_pts)
+backbone_tree = scipy.spatial.KDTree(backbone[:,1:])
+backbone_tree_smallest = scipy.spatial.KDTree(backbone_smallest[:,1:])
+```
+
+```{code-cell} ipython3
+parcellation = backbone_tree.query(all_pts)[1]
+parcellation_smallest = backbone_tree_smallest.query(all_pts)[1]
+```
+
+```{code-cell} ipython3
+plt.close('all')
 ```
 
 ```{code-cell} ipython3
 %matplotlib inline
+plt.rc('figure', dpi=150)
+```
+
+```{code-cell} ipython3
+len(parcellation) == len(all_pts)
+```
+
+```{code-cell} ipython3
+#id2sigma[0]
+```
+
+```{code-cell} ipython3
+intensity_comb = np.zeros(mask.shape)
+for path in mm_paths:
+    for p in path:
+        #sigma = id2sigma
+        loc = tuple(map(int,p[1:]))
+        intensity_comb[loc]  += id2sigma[p[0]+1]
+```
+
+```{code-cell} ipython3
+plt.imshow(intensity_comb, interpolation='nearest',vmax=5)
+```
+
+```{code-cell} ipython3
+lmm_occ = ndi.gaussian_filter(intensity_comb, sigmas[0])
+lmm_occ /= lmm_occ.max()
+plt.imshow(lmm_occ, vmax=0.25)
+```
+
+```{code-cell} ipython3
+def make_parcellation(backbone, mask):
+    all_pts = np.array(np.where(mask)).T
+    btree = scipy.spatial.KDTree(backbone[:,1:])
+    parcellation = btree.query(all_pts)[1]
+
+    sato_comb = np.zeros(mask.shape)
+    speed_comb = np.zeros(mask.shape)
+    
+
+    for j,p in enumerate(tqdm(parcellation)):
+        loc = tuple(all_pts[j])
+        parent = backbone[p]
+        scale = int(parent[0])+1
+        sigma = id2sigma[scale]
+        sato_comb[loc] = sato_coll[sigma][loc]
+        speed_comb[loc] = speed_coll[sigma][loc]
+    return sato_comb, speed_comb
+```
+
+```{code-cell} ipython3
+sato_ms1,speed_ms1 = make_parcellation(backbone, full_mask)
+```
+
+```{code-cell} ipython3
+sato_ms2,speed_ms2 = make_parcellation(backbone_smallest, full_mask)
 ```
 
 ```{code-cell} ipython3
@@ -1642,19 +1915,119 @@ len(bx)
 ```
 
 ```{code-cell} ipython3
-
+ui.group_maps([sato_ms1, sato_ms2], colorbar=False, figscale=5)
 ```
 
 ```{code-cell} ipython3
-
+ui.group_maps([uc.clip_outliers(im) for im in [speed_ms1, speed_ms2, (speed_ms1 + speed_ms2)/2]], 
+              2, colorbar=False, figscale=5)
 ```
+
+```{code-cell} ipython3
+plt.imshow(img, cmap='gray')
+```
+
+```{code-cell} ipython3
+ui.group_maps([percentile_rescale(m) for m in (speed_multiscale, lmm_occ, ndi.gaussian_filter(speed_ms1,sigmas[0]))], 
+              colorbar=False, figscale=5,
+              imkw=dict(cmap='plasma'))
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+speed_multiscale_vor = ndi.gaussian_filter(speed_ms1,sigmas[0])
+#speed_multiscale_vor = speed_ms1
+```
+
+```{code-cell} ipython3
+combo = percentile_rescale(lmm_occ) + 0.25*percentile_rescale(speed_multiscale_vor) + 0*percentile_rescale(speed_multiscale)
+```
+
+```{code-cell} ipython3
+plt.imshow(combo)
+```
+
+```{code-cell} ipython3
+# combox = counts
+# plt.figure(figsize=(12,12))
+# plt.imshow(combox)
+```
+
+```{code-cell} ipython3
+tt_ms = skfmm.travel_time(1.-soma_mask, combo)
+
+visited=set()
+
+paths_eco = [economic_gd(tt_ms, loc, nsteps=10000, max_drop=30000, visited=visited) 
+             for loc in tqdm(np.random.permutation(targets), 'making paths') if tt_ms[tuple(loc)]]
+
+Gtt = nx.DiGraph()
+for path in tqdm(paths_eco, desc='adding edges'):
+    Gtt.add_edges_from(list(itt.pairwise(map(tuple, path[::-1]))))
+
+counts = count_occurences(Gtt, full_mask.shape)
+logcounts = np.log10(1 + counts)
+```
+
+```{code-cell} ipython3
+np.max(logcounts)
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(12,12))
+plt.imshow(img, cmap='gray')
+plt.imshow(np.ma.masked_less_equal(logcounts,np.log10(4)),interpolation='nearest',cmap='Reds')
+plt.axis('off')
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+log_bins = np.linspace(np.log10(2), np.max(logcounts),100)
+
+for i,lb in enumerate(tqdm(log_bins[::-1])):
+    fig = plt.figure(figsize=(8,8))
+    plt.imshow(img, cmap='gray')
+    plt.imshow(np.ma.masked_less_equal(logcounts,lb),interpolation='nearest',cmap='Reds')
+    plt.tight_layout()
+    plt.axis('off')
+    fig.savefig('figures/super-tree%03d.png'%i)
+    plt.close()
+```
+
+```{code-cell} ipython3
+Gtt_filt = gu.filter_graph(Gtt, lambda n: n['count'] > 12)
+
+# # prune tips
+# for i in range(10):
+#     Gtt_filt = gu.filter_graph(Gtt_filt, lambda n: len(list(Gtt_filt.successors(n))))
+
+
+plot_paths2 = [np.array(follow_to_root(Gtt_filt, t)) for t in tqdm(gu.get_tips(Gtt_filt))]
+plot_paths2 = [p for p in plot_paths2 if len(p)>100]
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(12,12))
+plt.imshow(uc.clip_outliers(img)**0.5,cmap='gray')
+for path in plot_paths2:
+    color = np.random.rand(3)*0.75
+    if np.random.rand() < 1:
+        plt.plot(path[:,1], path[:,0],lw=1,alpha=0.75,color=color)
+plt.axis('off')
+plt.tight_layout()
+#plt.axis([100,150, 150,100])
+plt.title(f'LMM-voronoi speeds')
+#plt.axis([300,500,600,400])
+```
+
+---
 
 ```{code-cell} ipython3
 kdt0.data[3], kdt1.data[14]
 ```
 
 ```{code-cell} ipython3
-th_x = threshold_li(img[full_mask*(mask_centerline2)])
+th_x = threshold_li(img[full_mask*(mask_centerline2*mask_i)])
 th_x
 ```
 
@@ -1667,7 +2040,7 @@ plt.imshow((full_mask)*mask_centerline2)
 ```
 
 ```{code-cell} ipython3
-plt.imshow((full_mask^soma_mask)*mask_skel)
+plt.imshow((full_mask^soma_mask)*mask_skel*mask_i)
 ```
 
 ```{code-cell} ipython3
@@ -1676,7 +2049,7 @@ plt.figure()
 mask_opt = sato_best_sigma  >= sigma2id[sigma_i]
 
 plt.hist(img[full_mask*mask_centerline], 50, density=True, histtype='step');
-plt.hist(img[(full_mask^soma_mask)*(sato_i < th1)], 50, density=True, histtype='step');
+plt.hist(img[(full_mask^soma_mask)*(~mask_i)], 50, density=True, histtype='step');
 #plt.hist(img[(full_mask^soma_mask)*mask_opt], 50, density=True, histtype='step');
 
 #th_y = np.percentile(img[full_mask*(sato_i<th1)],95)
@@ -1684,7 +2057,7 @@ plt.hist(img[(full_mask^soma_mask)*(sato_i < th1)], 50, density=True, histtype='
 ```
 
 ```{code-cell} ipython3
-plt.hexbin(np.ravel(img[full_mask]),np.ravel(sato_i[full_mask]),bins='log')
+plt.hexbin(np.ravel(img_s[full_mask]),np.ravel(sato_i[full_mask]),bins='log')
 ```
 
 ```{code-cell} ipython3
@@ -1709,7 +2082,7 @@ th_z
 plt.figure(figsize=(8,8))
 plt.imshow(img, cmap='gray')
 
-mask_x = (mask_opt*(img > th_x)*(sato_i > th1))#, sigma_i**2)
+mask_x = remove_small_objects(mask_opt*(img_s > th_x)*(sato_i > th1), sigma_i**2)
 #mask_x = (mask_opt*(sato_i > th1))#, sigma_i**2)
 #mask_x = (mask_opt*(img > th_y)*(sato_i > th1))
 plt.contour(mask_x, colors=['lime'])
@@ -1718,7 +2091,7 @@ plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
-dd = skfmm.travel_time(1.0 - (mask_centerline2), mask_x)
+dd = skfmm.travel_time(1.0 - (mask_centerline), mask_x)
 ```
 
 ```{code-cell} ipython3
@@ -1743,26 +2116,39 @@ from skimage.filters import threshold_otsu
 
 ```{code-cell} ipython3
 def iterative_exclusive_masks(img, sigmas):
-    mask_sum = np.zeros(img.shape, bool)
+    mask_sum = np.zeros(img.shape, bool) + soma_mask
     masks_exclusive = {}
     bg = np.percentile(img[(~full_mask)],99)
     print('Bg:', bg)
     for σ in sorted(sigmas, reverse=True):
         vvg_i = vvg_coll[σ]
         sato_i = sato_coll[σ]
+        mask_i = masks[σ]
         th_lis = threshold_li(sato_i[sato_i>0])
         #th_ois = threshold_triangle(sato_i[sato_i>0])
         
-        #mask_centerline = (sato_i > np.percentile(sato_i[sato_i > th_lis], 75))\
-        #                  *(vvg_i < np.percentile(vvg_i[sato_i>th_lis],25))
-        mask_skel = skeletonize(sato_i > th_lis)
+        mask_centerline = (sato_i > np.percentile(sato_i[sato_i > th_lis], 75))\
+                          *(vvg_i < np.percentile(vvg_i[sato_i>th_lis],25))
+        mask_centerline = skeletonize(mask_centerline)
+        #mask_skel = skeletonize(sato_i > th_lis)
+        mask_skel = skeletonize(mask_i)
 
+        #mask_centerline2 = np.zeros_like(full_mask)
+        #for p in gd_skeleton(vvg_i,mask_i):
+        #    mask_centerline2[tuple(p)] = True
         
         cond_img = (img > bg)*(full_mask ^ mask_sum) & mask_skel
         #cond_img = (img > bg) & (full_mask) & mask_skel
         cond_img_neg = (img > bg) & (full_mask ^ mask_sum) & (sato_i < th_lis)
         #th_lii = threshold_minimum(img[cond_img])
-        th_lii = np.percentile(img[cond_img_neg], 95)
+        th_lii = -threshold_li(-img[cond_img])
+        threshold_neg = -threshold_li(-img[cond_img_neg])
+        #if th_lii <= threshold_neg + 3*np.std(img[cond_img_neg]):
+        #    th_lii = bg
+        #th_lii = np.percentile(img[cond_img_neg], 95)
+        # -- here it should make sense to estimate if the two brightness 
+        # -- distributions are really different
+        # 
         #th_lii = uc.utils.estimate_mode(img[cond_img], top_cut=95, kind='max')
         print(th_lis, th_lii)
         
@@ -1771,32 +2157,31 @@ def iterative_exclusive_masks(img, sigmas):
         axs[0].hist(img[cond_img],50,density=True,histtype='step');
         axs[0].hist(img[cond_img_neg],50,density=True,histtype='step');
         axs[0].axvline(th_lii, color='m', ls='--')
+        axs[0].axvline(threshold_neg, color='orange', ls='--')
         #axs[0].axvline(np.percentile(img[cond_img],95), color='gray', ls='--')
-        axs[1].imshow(cond_img*1.0+(sato_i > th_lis), 
-                      interpolation='nearest')
+        #axs[1].imshow(cond_img*1.0 + mask_i, interpolation='nearest')
+        axs[1].imshow(mask_skel*1.0 + cond_img +  mask_i, interpolation='nearest')
         
         # don't know how to have this built iteratively...
-        mask_opt = sato_best_sigma  >= sigma2id[σ]
+        #mask_opt = sato_best_sigma  >= sigma2id[σ]
         #mask_x = mask_opt*(img > th_lii)*(sato_i > th_lis)
-        mask_x = mask_opt*(sato_i > th_lis)
-        #mask_x = (img > th_lii)*(sato_i > th_lis)
-
-
+        #mask_x = mask_opt*mask_i*(img > th_lii)
+        mask_x = mask_opt*(img > 0*th_lii)*mask_i
         
-        mask_final = mask_x
+        #mask_final = mask_x
         ridge_distance = skfmm.travel_time(1.0 - (mask_skel), mask_x)
-        mask_final = np.array((ridge_distance < σ))*(~ridge_distance.mask)
+        mask_final = np.array((ridge_distance < 1.5*σ))*(~ridge_distance.mask)
         #overlap_target = soma
         mask_final = uc.masks.select_overlapping(mask_final, mask_sum | soma_mask)
         #mask_final = ndi.binary_opening(ndi.binary_closing(mask_final))
         #mask_final = uc.masks.threshold_object_size(mask_final, (σ)**2)
 
-        
+        axs[2].imshow(mask_x + mask_final*1.0, interpolation='nearest')
         
         if σ < np.max(sigmas):
             mask_final = mask_final & (mask_final ^ mask_sum)
 
-        axs[2].imshow(mask_x, interpolation='nearest')
+        
         mask_sum += mask_final.astype(bool)
         axs[3].imshow(mask_sum, interpolation='nearest')
         masks_exclusive[σ] = mask_final

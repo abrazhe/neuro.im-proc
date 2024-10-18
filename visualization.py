@@ -1,6 +1,6 @@
-import graph_utils as gu    
+import graph_utils as gu
 import numpy as np
-    
+
 def view_graph_as_shapes(g, viewer, color=None, kind='points', name=None):
     """
     display nodes of graph g in napari viewer as points or as lines
@@ -8,16 +8,16 @@ def view_graph_as_shapes(g, viewer, color=None, kind='points', name=None):
     if color is None:
         color = np.random.rand(3)
     pts = np.array(g.nodes)
-    
+
     kw = dict(face_color=color, edge_color=color, blending='translucent_no_depth', name=name)
     #kw = dict(face_color=color, edge_color=color,  name=name)
     if kind == 'points':
         viewer.add_points(pts, size=1, symbol='square', **kw)
     elif kind == 'path':
         viewer.add_shapes(pts, edge_width=0.5, shape_type='path', **kw)
-        
-def view_graph_as_colored_image(g,  shape, 
-                                viewer=None, name=None, 
+
+def view_graph_as_colored_image(g,  shape,
+                                viewer=None, name=None,
                                 root_chooser=lambda r: True,
                                 scale=None,
                                 change_color_at_branchpoints=False):
@@ -32,7 +32,7 @@ def view_graph_as_colored_image(g,  shape,
         return viewer
     else:
         return stack
-        
+
 def graph_to_paths(g, min_path_length=1, root_chooser=lambda r:True):
     """
     given a directed graph, return a list of a lists of nodes, collected
@@ -40,29 +40,29 @@ def graph_to_paths(g, min_path_length=1, root_chooser=lambda r:True):
     """
 
     roots = gu.get_roots(g)
-    
+
     def _acc_segment(root, segm, accx):
         if segm is None:
             segm = []
         if accx is None:
             accx = []
         children = list(g.successors(root))
-        
+
         if len(children) < 1:
             accx.append(segm)
             return
-        
+
         elif len(children) == 1:
             c = children[0]
             segm.append(c)
             _acc_segment(c, segm, accx)
-        
+
         if len(children) > 1:
             #segm.append(root)
             accx.append(segm)
             for c in children:
-                _acc_segment(c, [root, c], accx)        
-    
+                _acc_segment(c, [root, c], accx)
+
     acc = {}
     for root in roots:
         if root_chooser(root):
@@ -85,4 +85,4 @@ def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
                 p  = np.round(p).astype(int)
                 # todo add interpolation?
                 stack[tuple(p)] = color
-    return stack        
+    return stack
