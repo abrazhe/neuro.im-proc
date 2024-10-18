@@ -2,7 +2,7 @@ import numpy as np
 
 def read_pic(name):
     fid = open(name, 'rb')
-    nx,ny,nz = map(np.int, np.fromfile(fid, np.uint16, 3))
+    nx,ny,nz = map(int, np.fromfile(fid, np.uint16, 3))
     start_frames = 0x4c
     fid.seek(start_frames,0)
     frames = np.fromfile(fid, np.uint8, nx*ny*nz).reshape(nz,nx,ny)
@@ -26,5 +26,5 @@ def get_axes(meta):
     acc = []
     for ax in ax_info:
         x = ax.split()[-2:]
-        acc.append((np.float(x[0]), x[1]))
+        acc.append((float(x[0]), x[1]))
     return acc
