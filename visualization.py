@@ -19,6 +19,7 @@ def view_graph_as_shapes(g, viewer, color=None, kind='points', name=None):
 def view_graph_as_colored_image(g,  shape, 
                                 viewer=None, name=None, 
                                 root_chooser=lambda r: True,
+                                scale=None,
                                 change_color_at_branchpoints=False):
     """
     Convert a graph to a colored 3D stack image and add it to a napari viewer.
@@ -27,7 +28,7 @@ def view_graph_as_colored_image(g,  shape,
     paths = graph_to_paths(g, root_chooser=root_chooser)
     stack = paths_to_colored_stack(paths, shape, change_color_at_branchpoints)
     if viewer is not None:
-        viewer.add_image(stack, channel_axis=3, colormap=['red','green','blue'], name=name)
+        viewer.add_image(stack, channel_axis=3, colormap=['red','green','blue'], name=name, scale=scale)
         return viewer
     else:
         return stack
@@ -81,5 +82,7 @@ def paths_to_colored_stack(paths, shape, change_color_at_branchpoints=False):
                 color = np.random.randint(0,255, size=3)
             for k,p in enumerate(pc):
                 #print(k, p)
+                p  = np.round(p).astype(int)
+                # todo add interpolation?
                 stack[tuple(p)] = color
     return stack        
