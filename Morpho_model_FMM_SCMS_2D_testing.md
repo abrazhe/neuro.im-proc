@@ -880,15 +880,95 @@ plt.colorbar()
 ```
 
 ```{code-cell} ipython3
+np.cos(np.pi/6), np.sin(np.pi/6)
+```
+
+```{code-cell} ipython3
+import seaborn as sns
+```
+
+```{code-cell} ipython3
+# x.reshape((2,-1)).T # alternative ;)
+
+def grid2points(X,Y):
+    return np.array(list(zip(np.ravel(X),np.ravel(Y))))
+
+def extract_edge_lengths(locs, tri):
+    return np.array([np.sum((locs[edge[0]] - locs[edge[1]])**2)**0.5 for edge in tri.edges])
+```
+
+```{code-cell} ipython3
+#np.arange(5)%2
+```
+
+```{code-cell} ipython3
+def tri_grid(nx, ny):
+    xx,yy = np.mgrid[:nx,:ny]
+    print(xx.shape)
+    xx1 = xx + (0.5 * (np.arange(ny)%2))[None,:]
+    yy1 = yy*np.cos(np.pi/6)
+    return xx1, yy1
+             
+    
+```
+
+```{code-cell} ipython3
+tri_locs = grid2points(*tri_grid(4,5))
+```
+
+```{code-cell} ipython3
+np.min(tri_locs,0),np.max(tri_locs,0)
+```
+
+```{code-cell} ipython3
+plt.plot(tri_locs[:,0], tri_locs[:,1], '.')
+plt.axis('equal')
+```
+
+```{code-cell} ipython3
+tri_locsr = np.maximum(tri_locs + np.clip(np.random.randn(*tri_locs.shape)*0.25, -0.25,0.25),0)
+```
+
+```{code-cell} ipython3
+tri_locsr.min(0)
+```
+
+```{code-cell} ipython3
+plt.plot(tri_locsr[:,0], tri_locsr[:,1], '.')
+plt.axis('equal')
+```
+
+```{code-cell} ipython3
+# tri = plt.matplotlib.tri.Triangulation(*tri_locs.T)
+# edge_lengths = extract_edge_lengths(tri_locs, tri)
+
+# #plt.hist(edge_lengths, 25, color='gray',ec='k');
+# sns.histplot(edge_lengths, bins=25, color='gray', kde=True)
+```
+
+```{code-cell} ipython3
+#len(edge_lengths)
+```
+
+```{code-cell} ipython3
+#np.unique(np.round(edge_lengths,3))
+```
+
+```{code-cell} ipython3
 # seeds =  np.array([(255,255), 
 #                    (64,64), 
 #                    (300, 64),
 #                    (300, 440),
 #                    (100,450), (450,100), (450,450)])
 
-seeds = np.random.randint(10,500, size=(50,2))
-seeds = [(255,255)] +  [s for s in seeds 
-                        if eu_dist(s,(255,255)) > 250]
+#seeds = np.random.randint(10,500, size=(50,2))
+#seeds = [(255,255)] +  [s for s in seeds 
+#                        if eu_dist(s,(255,255)) > 250]
+
+
+seeds = tri_locsr[:,::-1]*150
+seeds = seeds[(seeds[:,0]>10)*(seeds[:,1]>10)*(seeds[:,0]<500)*(seeds[:,1]<500)]
+
 seeds = np.array(seeds)
 #seeds = np.concatenate(([(255,255)],seeds))
 #seeds += np.random.randint(-16,16, size=(len(seeds),2))
@@ -905,7 +985,7 @@ x = np.indices((2,3))
 ```
 
 ```{code-cell} ipython3
-x.reshape((2,-1)).T
+
 ```
 
 ```{code-cell} ipython3
@@ -925,10 +1005,27 @@ plt.imshow(labels)
 ```
 
 ```{code-cell} ipython3
-phi0 = np.zeros(field.shape)
-phi0[255,255] = 1
+valid_inits = kdt.query_ball_point(px_locs, 100,return_length=True)
+```
+
+```{code-cell} ipython3
+somata_mask = kdt.query_ball_point(px_locs, 5,return_length=True).reshape(speed.shape)>0
+```
+
+```{code-cell} ipython3
+len(valid_inits), len(px_locs)
+```
+
+```{code-cell} ipython3
+plt.imshow(somata_mask)
+```
+
+```{code-cell} ipython3
+#phi0 = np.zeros(field.shape)
+#phi0[255,255] = 1
 #phi0[250,150] = phi0[255,430] = 1
-phi0 = ndi.binary_dilation(phi0,iterations=2)
+#phi0 = ndi.binary_dilation(phi0,iterations=2)
+phi0 = somata_mask
 plt.imshow(phi0, interpolation='nearest')
 
 phi0 = ~phi0
@@ -942,7 +1039,7 @@ ttx = skfmm.travel_time(phi0, speed=speed)
 ttx = np.ma.filled(ttx,np.max(ttx))
 
 #boundary_mask = labels == 1
-boundary_mask = ttx < np.percentile(ttx,33)
+boundary_mask = ttx < np.percentile(ttx,50)
 
 plt.figure()
 plt.imshow(uc.clip_outliers(ttx),cmap='BuPu'); plt.colorbar()
@@ -959,7 +1056,7 @@ plt.contour(boundary_mask, levels=[0.5], colors='r')
 ```
 
 ```{code-cell} ipython3
-tm_mask = ndi.binary_dilation(ttx<np.percentile(ttx,0.1),iterations=1)
+tm_mask = ndi.binary_dilation(ttx<=np.percentile(ttx,0.5),iterations=1)
 plt.imshow(tm_mask)
 ```
 
@@ -1059,6 +1156,7 @@ tree = dict()
 
 init_pts = np.random.randint(50,450, size=(10,2))
 
+
 #newtree = merging_rw_gd(ttx, (10,50), terminate_mask=tm_mask, nsteps=1000, tree=tree)
 fails = []
 for p in tqdm(init_pts):
@@ -1081,7 +1179,7 @@ len(tree)
 ```
 
 ```{code-cell} ipython3
-plt.imshow(uc.clip_outliers(ttx_bumps), cmap='gray')
+plt.imshow(uc.clip_outliers(ttx), cmap='gray')
 plot_tree(tree, ax=plt.gca(), random_colors=False, lw=0.75)
 #plt.plot(gauss_locs[:,0], gauss_locs[:,1], '.')
 for path in fails:
@@ -1102,7 +1200,7 @@ for path in fails:
 ```{code-cell} ipython3
 #%time path1 = np.array([n.v for n in follow_to_root(tree[tuple(init_pts[-1])])])
 path1 = apath_to_root(tree[tuple(init_pts[1])])
-plt.imshow(uc.clip_outliers(ttx_bumps), cmap='gray')
+plt.imshow(uc.clip_outliers(ttx), cmap='gray')
 plt.plot(path1[:,1], path1[:,0],'r')
 ```
 
@@ -1156,20 +1254,32 @@ from imfun.core.coords import eu_dist
 ```
 
 ```{code-cell} ipython3
-init_pts = np.array([(i,j) for i in range(50,450) for j in range(50,450) 
-                     if boundary_mask[(i,j)]])
-                     #if eu_dist((i,j),(255,255)) < 200])
+plt.imshow(boundary_mask)
+```
 
-Npts = 5000
+```{code-cell} ipython3
+#init_pts = np.array([(i,j) for i in range(50,450) for j in range(50,450) 
+#                    if boundary_mask[(i,j)]])
+#                    #if eu_dist((i,j),(255,255)) < 200])
+
+init_pts = uc.masks.mask2points(boundary_mask)
+
+dists,_ = kdt.query(init_pts, k=1)
+
+#Npts = 5000
 init_pts_dense = np.random.permutation(init_pts)
-init_pts = np.random.permutation(init_pts)[:Npts]
 
-init_pts = sorted(init_pts, key=lambda p: eu_dist(p, (255,255)), reverse=True)
+init_pts_sorted = np.random.permutation(init_pts)
+dists,_ = kdt.query(init_pts, k=1)
+
+
+#init_pts = sorted(init_pts, key=lambda p: eu_dist(p, (255,255)), reverse=True)
+init_pts = init_pts[np.argsort(dists)[::-1]]
 #init_pts_dense = sorted(init_pts_dense, key=lambda p: eu_dist(p, (255,255)), reverse=True)
 ```
 
 ```{code-cell} ipython3
-
+#dists
 ```
 
 ```{code-cell} ipython3
@@ -1200,7 +1310,7 @@ ttx0 = np.ma.filled(ttx0, np.max(ttx0))
 ttx = ttx0.copy()
 tree = dict()
 
-plt.imshow(speed**speed_gamma, cmap='plasma'); plt.colorbar()
+#plt.imshow(speed**speed_gamma, cmap='plasma'); plt.colorbar()
 
 
 ttx_acc = [ttx0]
@@ -1209,12 +1319,15 @@ speed_acc = [speed]
 speed_update = np.zeros(field.shape)
 speed_corr = np.zeros(field.shape)
 
+batch_size = 10
 Nseeds =  2500
+#Nseeds =  500
 
 fails = []
-alpha = 0.999
+alpha = 0.999999
 j = 0
 for p0 in tqdm(np.random.permutation(init_pts)[:Nseeds]):
+#for p0 in tqdm(init_pts[:Nseeds]):
 #for p0 in tqdm(init_pts[:500]):
 #for p0 in tqdm(init_pts[::-1][:500]):
     p0 = tuple(p0)
@@ -1243,15 +1356,22 @@ for p0 in tqdm(np.random.permutation(init_pts)[:Nseeds]):
         # [Q:] Do I need to Gauss-blur previous speed update?
         #      Any reason for this at all?
         #speed_corr = ndi.gaussian_filter(speed_corr,1) + speed_update
+        
         speed += (speed_corr*alpha**j)**(1/speed_gamma)
-        ttx = ttx + skfmm.travel_time(phi0, speed=speed)
-        ttx = np.ma.filled(ttx, np.max(ttx))
+        
+        if (not j%batch_size) and alpha**j > 1e-6:    
+            ttx = ttx + skfmm.travel_time(phi0, speed=speed)
+            ttx = np.ma.filled(ttx, np.max(ttx))
         j += 1
         #ttx_acc.append(ttx)
         #speed_acc.append(speed)
     else:
         fails.append(np.array([n.v for n in try_path]))
         print('not finished for loc', p0)
+```
+
+```{code-cell} ipython3
+alpha**j
 ```
 
 ```{code-cell} ipython3
@@ -1279,7 +1399,11 @@ plt.imshow(speed); plt.colorbar()
 ```
 
 ```{code-cell} ipython3
-plt.imshow(speed**2); plt.colorbar()
+plt.imshow(np.log10(1 + speed)); plt.colorbar()
+```
+
+```{code-cell} ipython3
+#plt.imshow(speed**2); plt.colorbar()
 ```
 
 ```{code-cell} ipython3
@@ -1327,7 +1451,7 @@ plt.colorbar()
 ```
 
 ```{code-cell} ipython3
-plt.imshow(speed); plt.colorbar()
+plt.imshow(np.log(1 + speed)); plt.colorbar()
 ```
 
 ```{code-cell} ipython3
@@ -1426,8 +1550,7 @@ plot_tree(tree, max_lw=4, random_colors=False,)
 ```
 
 ```{code-cell} ipython3
-assign_diameters_nx(Gx, min_diam=0.01, gamma=1, max_diam=9)
-assign_diameters_nx(Gx2, min_diam=0.01, gamma=1.5, max_diam=9)
+
 ```
 
 ```{code-cell} ipython3
@@ -1484,7 +1607,28 @@ def tanh_blob(loc, width, fullshape, sharpness=5):
 ```
 
 ```{code-cell} ipython3
-def make_portrait_nx(G, shape, min_diam_show=0, do_threshold=False):
+
+kdt_x = sp.spatial.KDTree(px_locs)
+```
+
+```{code-cell} ipython3
+#len(kdt_x)
+```
+
+```{code-cell} ipython3
+%time ids =  kdt_x.query_ball_point((255,255),1)
+```
+
+```{code-cell} ipython3
+px_locs[ids]
+```
+
+```{code-cell} ipython3
+portrait[*px_locs[ids].T]
+```
+
+```{code-cell} ipython3
+def make_portrait_nx(G, shape, min_diam_show=0, fill_soma=False, do_threshold=False):
     portrait = np.zeros(counts.shape)
 
     for n in tqdm(G):
@@ -1497,7 +1641,31 @@ def make_portrait_nx(G, shape, min_diam_show=0, do_threshold=False):
             if do_threshold:
                 blob = 1.0*(blob>0.5*np.max(blob))
             portrait = np.maximum(portrait, amp*blob)
-    #portrait[tm_mask] = np.percentile(portrait[tm_mask],99)
+    if fill_soma:
+        portrait[tm_mask] = np.percentile(portrait[ndi.binary_dilation(tm_mask)],99)
+    #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
+    return portrait
+    
+```
+
+```{code-cell} ipython3
+def make_portrait_nx2(G, shape, min_diam_show=0, fill_soma=False):
+    portrait = np.zeros(shape)
+    px_locs = np.indices(shape).reshape((2,-1)).T
+    ktree = sp.spatial.KDTree(px_locs)
+    for n in tqdm(G):
+        diam = G.nodes[n]['diam']
+        if diam >= min_diam_show:
+            amp = np.log10(0.1+G.nodes[n]['count'])
+            #amp = diam
+            #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
+            knns = ktree.query_ball_point(n, diam/2)
+            locs = px_locs[knns]
+            for loc in locs:
+                l = tuple(loc)
+                portrait[l] = np.maximum(portrait[l],amp)
+    if fill_soma:
+        portrait[tm_mask] = np.percentile(portrait[ndi.binary_dilation(tm_mask)],99)
     #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
     return portrait
     
@@ -1523,7 +1691,9 @@ def make_portrait_nx(G, shape, min_diam_show=0, do_threshold=False):
 ```
 
 ```{code-cell} ipython3
-portrait = make_portrait_nx(Gx, speed.shape)
+assign_diameters_nx(Gx, min_diam=0.1, gamma=1.1, max_diam=6)
+
+%time portrait = make_portrait_nx2(Gx, speed.shape, fill_soma=True)
 
 plt.imshow(portrait, cmap='plasma'); plt.colorbar()
 ```
@@ -1533,7 +1703,15 @@ plt.imshow(portrait,cmap='gray'); plt.colorbar()
 ```
 
 ```{code-cell} ipython3
-portrait2 = make_portrait_nx(Gx2, speed.shape, min_diam_show=0.05, do_threshold=True)
+# x = np.linspace(0.01, 10, 200)
+# for gamma in [ 0.5, 1., 1.5, 2]:
+#     plt.plot(x, (2*x**gamma)**(1/gamma), label=gamma)
+# plt.legend()
+```
+
+```{code-cell} ipython3
+assign_diameters_nx(Gx2, min_diam=0.01, gamma=1.2, max_diam=16)
+portrait2 = make_portrait_nx2(Gx2, speed.shape, min_diam_show=0.05, fill_soma=True)
 ```
 
 ```{code-cell} ipython3
@@ -1543,6 +1721,10 @@ plt.imshow(portrait2, cmap='plasma'); plt.colorbar()
 ```{code-cell} ipython3
 plt.imshow(portrait2, cmap='gray_r')
 plt.axis('off')
+```
+
+```{code-cell} ipython3
+plt.imshow(portrait2 > 0.0, interpolation='nearest')
 ```
 
 ```{code-cell} ipython3
@@ -1606,4 +1788,8 @@ ui.group_maps(ttx_acc[::10])
 
 ```{code-cell} ipython3
 #%timeit ndi.map_coordinates(speed, p.T, order=1)
+```
+
+```{code-cell} ipython3
+
 ```
