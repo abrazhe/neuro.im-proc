@@ -743,7 +743,7 @@ sigma0
 ### Define speed as just brightness
 
 ```{code-cell} ipython3
-from imfun.bwmorph import neighbours
+from imfun.bwmorph import neighbours, neighbours_2
 ```
 
 ```{code-cell} ipython3
@@ -754,7 +754,7 @@ def stupid_2d_gd(field, p0, step=1, nsteps=100, max_drop=1):
     for i in range(nsteps):
         p = tuple(traj[-1])
         u = field[p]
-        for n in neighbours(p, field.shape):
+        for n in neighbours_2(p, field.shape):
             n = tuple(map(int, n))
             v = field[n]
             if v < u and (u-v < max_drop):
@@ -775,7 +775,7 @@ def economic_gd(field, p0, nsteps=10000, max_drop=100000, visited=None):
     for i in range(nsteps):
         p = tuple(traj[-1])
         u = field[p]
-        for n in neighbours(p, field.shape):
+        for n in neighbours_2(p, field.shape):
             n = tuple(map(int, n))
             v = field[n]
             if v < u and (u-v < max_drop):
@@ -788,6 +788,39 @@ def economic_gd(field, p0, nsteps=10000, max_drop=100000, visited=None):
             break
         visited.add(p)
     return traj
+```
+
+```{code-cell} ipython3
+def economic_gd2(field, p0, nsteps=10000, max_drop=100000, terminate_mask=None, visited=None):
+    if visited is None:
+        visited=set()
+    p0 = tuple(map(int, p0))
+    traj = [p0]
+    
+    
+    for i in range(nsteps):
+        p = tuple(traj[-1])
+        u = field[p]
+        nns = (tuple(n) for n in np.array(neighbours_2(p, field.shape)).astype(int))
+        nns = [n for n in nns if not n in traj and field[n] < u]
+        if not len(nns):
+            break
+        nn_fields = [field[n] for n in nns]
+
+        linked_nns = [tuple(n) for n in nns if tuple(n) in visited]
+        linked_fields = [field[n] for n in linked_nns]
+
+        if len(linked_nns):
+            best = np.argmin(linked_fields)
+            pnext = linked_nns[best]
+        else:
+            best = np.argmin(nn_fields)
+            pnext = nns[best]
+        traj.append(pnext)
+        if terminate_mask[pnext] or pnext in visited or pnext==p:
+            break
+    visited.update(set(traj))
+    return np.array(traj)
 ```
 
 ```{code-cell} ipython3
@@ -1350,6 +1383,9 @@ def scramble_img(img, mask=None):
     return out
 ```
 
+**NOTE:**
+Scrambling is not the best statistical model at small sigmas, because the pixel intensity variations in original image are less than after scrambling
+
 ```{code-cell} ipython3
 #uc.utils.scramble.scramble_data()
 ```
@@ -1373,6 +1409,33 @@ img_rand = scramble_img(img)
 #img_rand[~full_mask] = img[~full_mask]
 #img_rand = np.clip(img_rand, 0, 255)
 plt.imshow(img_rand, cmap='gray',vmin=0,vmax=255)
+```
+
+```{code-cell} ipython3
+sigmas
+```
+
+```{code-cell} ipython3
+ksigma = 6
+plt.imshow(sato_coll[sigmas[ksigma]], cmap='gray')
+plt.colorbar()
+plt.contour(sato_coll[sigmas[ksigma]], levels=[35], colors=['r'])
+```
+
+```{code-cell} ipython3
+
+plt.imshow(astro.morpho.sato2d(img_rand, 
+                               sigmas[ksigma], 
+                               hessian_variant='dog')*sigmas[ksigma]**2,
+           cmap='gray')
+plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.imshow(astro.morpho.sato2d(ndi.gaussian_filter(img_rand,16), 16, 
+                               hessian_variant='dog')*16**2, 
+           cmap='gray')
+plt.colorbar()
 ```
 
 ```{code-cell} ipython3
@@ -1404,8 +1467,8 @@ ui.group_maps([uc.clip_outliers(sp)
 
 ```{code-cell} ipython3
 plt.figure()
-plt.hist(sato_coll[sigmas[4]][full_mask],50, density=True, histtype='step');
-plt.hist(sato_coll_r[sigmas[4]][full_mask],50, density=True, histtype='step');
+plt.hist(sato_coll[sigmas[2]][full_mask],50, density=True, histtype='step');
+plt.hist(sato_coll_r[sigmas[2]][full_mask],50, density=True, histtype='step');
 ```
 
 ```{code-cell} ipython3
@@ -1589,10 +1652,6 @@ endpoints = gd_skeleton(vvg_i, sato_i > th1)
 ```
 
 ```{code-cell} ipython3
-ridge_coll = {sigma: gd_skeleton(vvg_coll[sigma],masks[sigma]) for sigma in tqdm(sigmas)}
-```
-
-```{code-cell} ipython3
 
 ```
 
@@ -1600,6 +1659,10 @@ ridge_coll = {sigma: gd_skeleton(vvg_coll[sigma],masks[sigma]) for sigma in tqdm
 mask_centerline2 = np.zeros_like(full_mask)
 for p in endpoints:
     mask_centerline2[tuple(p)] = True
+```
+
+```{code-cell} ipython3
+ridge_coll = {sigma: gd_skeleton(vvg_coll[sigma],masks[sigma]) for sigma in tqdm(sigmas)}
 ```
 
 ```{code-cell} ipython3
@@ -1860,6 +1923,10 @@ len(parcellation) == len(all_pts)
 ```
 
 ```{code-cell} ipython3
+parcellation.shape
+```
+
+```{code-cell} ipython3
 #id2sigma[0]
 ```
 
@@ -1890,6 +1957,7 @@ def make_parcellation(backbone, mask):
 
     sato_comb = np.zeros(mask.shape)
     speed_comb = np.zeros(mask.shape)
+    scale_comb = np.zeros(mask.shape)
     
 
     for j,p in enumerate(tqdm(parcellation)):
@@ -1897,13 +1965,14 @@ def make_parcellation(backbone, mask):
         parent = backbone[p]
         scale = int(parent[0])+1
         sigma = id2sigma[scale]
+        scale_comb[loc] = sigma
         sato_comb[loc] = sato_coll[sigma][loc]
         speed_comb[loc] = speed_coll[sigma][loc]
-    return sato_comb, speed_comb
+    return sato_comb, speed_comb, scale_comb
 ```
 
 ```{code-cell} ipython3
-sato_ms1,speed_ms1 = make_parcellation(backbone, full_mask)
+sato_ms1,speed_ms1,scale_map1 = make_parcellation(backbone, full_mask)
 ```
 
 ```{code-cell} ipython3
@@ -1911,11 +1980,16 @@ sato_ms2,speed_ms2 = make_parcellation(backbone_smallest, full_mask)
 ```
 
 ```{code-cell} ipython3
-
+plt.imshow(img, cmap='gray')
 ```
 
 ```{code-cell} ipython3
-ui.group_maps([sato_ms1, sato_ms2], colorbar=False, figscale=5)
+plt.figure(figsize=(9,9))
+plt.imshow(scale_map1, cmap='jet');plt.colorbar()
+```
+
+```{code-cell} ipython3
+ui.group_maps([uc.clip_outliers(im) for im in [sato_ms1, sato_ms2]], colorbar=False, figscale=5)
 ```
 
 ```{code-cell} ipython3
@@ -1928,14 +2002,15 @@ plt.imshow(img, cmap='gray')
 ```
 
 ```{code-cell} ipython3
-ui.group_maps([percentile_rescale(m) for m in (speed_multiscale, lmm_occ, ndi.gaussian_filter(speed_ms1,sigmas[0]))], 
+speed_multiscale_vor = ndi.gaussian_filter(speed_ms1,sigmas[0])
+
+ui.group_maps([percentile_rescale(m) for m in (speed_multiscale, lmm_occ, speed_multiscale_vor)], 
               colorbar=False, figscale=5,
               imkw=dict(cmap='plasma'))
 plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
-speed_multiscale_vor = ndi.gaussian_filter(speed_ms1,sigmas[0])
 #speed_multiscale_vor = speed_ms1
 ```
 
@@ -1944,7 +2019,7 @@ combo = percentile_rescale(lmm_occ) + 0.25*percentile_rescale(speed_multiscale_v
 ```
 
 ```{code-cell} ipython3
-plt.imshow(combo)
+plt.imshow(combo, cmap='plasma')
 ```
 
 ```{code-cell} ipython3
@@ -1958,8 +2033,11 @@ tt_ms = skfmm.travel_time(1.-soma_mask, combo)
 
 visited=set()
 
-paths_eco = [economic_gd(tt_ms, loc, nsteps=10000, max_drop=30000, visited=visited) 
-             for loc in tqdm(np.random.permutation(targets), 'making paths') if tt_ms[tuple(loc)]]
+paths_eco = [economic_gd2(tt_ms, loc, nsteps=10000, max_drop=30000, 
+                          terminate_mask = soma_mask,
+                          visited=visited) 
+             for loc in tqdm(np.random.permutation(targets), 'making paths') 
+             if tt_ms[tuple(loc)]]
 
 Gtt = nx.DiGraph()
 for path in tqdm(paths_eco, desc='adding edges'):
@@ -1970,7 +2048,19 @@ logcounts = np.log10(1 + counts)
 ```
 
 ```{code-cell} ipython3
+Gtt.nodes[(353, 316)]
+```
+
+```{code-cell} ipython3
 np.max(logcounts)
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(12,12))
+plt.imshow(img, cmap='gray')
+plt.imshow(np.ma.masked_less_equal(logcounts,np.log10(4)),interpolation='nearest',cmap='Reds')
+plt.axis('off')
+plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
@@ -1995,7 +2085,7 @@ for i,lb in enumerate(tqdm(log_bins[::-1])):
 ```
 
 ```{code-cell} ipython3
-Gtt_filt = gu.filter_graph(Gtt, lambda n: n['count'] > 12)
+Gtt_filt = gu.filter_graph(Gtt, lambda n: n['count'] > 12 if 'count' in n else False)
 
 # # prune tips
 # for i in range(10):
@@ -2023,7 +2113,42 @@ plt.title(f'LMM-voronoi speeds')
 ---
 
 ```{code-cell} ipython3
-kdt0.data[3], kdt1.data[14]
+plt.figure(figsize=(6,6))
+sigma_i = sigmas[4]
+vvg_i = vvg_coll[sigma_i]
+sato_i = sato_coll[sigma_i]
+img_s = ndi.gaussian_filter(img, sigma_i)
+mask_i = masks[sigma_i]
+
+th0 = np.percentile(sato_i[(~full_mask)*(sato_i>0)],95)
+th1 = threshold_li(sato_i[sato_i>0])
+print('Th0: ', th0, 'Th Li:', th1)
+plt.imshow(img**0.5, cmap='gray')
+#plt.contour(sato_i, levels=sorted([th0,  250]), colors=['m', 'r'])
+plt.contour(sato_i, levels=sorted([th1, 250]), colors=['m', 'r'])
+
+
+mask_centerline = (sato_i > np.percentile(sato_i[sato_i > th1], 50))\
+                   *(vvg_i < np.percentile(vvg_i[sato_i>th1],25))
+mask_centerline = skeletonize(mask_centerline*mask_i)
+mask_skel = skeletonize(mask_i)
+
+plt.imshow(np.dstack([mask_centerline*1.0, 
+                      mask_skel, 
+                      np.zeros_like(mask_skel),
+                     (mask_centerline | mask_skel)]))
+
+#th_sato
+cond = full_mask*(sato_i>0)
+#plt.hist(img[],50);
+# plt.figure()
+# plt.plot(img[cond], sato_i[cond], ',', alpha=0.1)
+
+
+# plt.axhline(th0, color='darkgray', ls='--')
+# plt.axhline(th1, color='gray', ls='--')
+#plt.xlabel('img'), plt.ylabel('sato')
+plt.title(f'σ={sigma_i:1.1f}')
 ```
 
 ```{code-cell} ipython3
@@ -2032,15 +2157,22 @@ th_x
 ```
 
 ```{code-cell} ipython3
-plt.imshow((full_mask)*mask_centerline2)
+endpoints = gd_skeleton(vvg_i, sato_i > th1)
+mask_centerline2 = np.zeros_like(full_mask)
+for p in endpoints:
+    mask_centerline2[tuple(p)] = True
 ```
 
 ```{code-cell} ipython3
-
+plt.imshow((full_mask)*mask_centerline2,interpolation='nearest')
 ```
 
 ```{code-cell} ipython3
-plt.imshow((full_mask^soma_mask)*mask_skel*mask_i)
+sigma_i
+```
+
+```{code-cell} ipython3
+plt.imshow((full_mask^soma_mask)*mask_centerline*mask_i,interpolation='nearest')
 ```
 
 ```{code-cell} ipython3
@@ -2048,12 +2180,28 @@ plt.figure()
 
 mask_opt = sato_best_sigma  >= sigma2id[sigma_i]
 
-plt.hist(img[full_mask*mask_centerline], 50, density=True, histtype='step');
+cond_img = (full_mask^soma_mask)*mask_centerline
+
+
+plt.hist(img[cond_img], 50, density=True, histtype='step');
 plt.hist(img[(full_mask^soma_mask)*(~mask_i)], 50, density=True, histtype='step');
+
+mode_x = uc.utils.estimate_mode(img_s[cond_img], top_cut=95, kind='max')
+th_lii = mode_x - np.std(img_s[cond_img])
+
 #plt.hist(img[(full_mask^soma_mask)*mask_opt], 50, density=True, histtype='step');
 
 #th_y = np.percentile(img[full_mask*(sato_i<th1)],95)
-#plt.axvline(th_y, color='m')
+plt.axvline(th_lii, color='m')
+plt.axvline(mode_x, color='g')
+```
+
+```{code-cell} ipython3
+plt.imshow(mask_i)
+```
+
+```{code-cell} ipython3
+plt.imshow(mask_i*(img>th_lii), interpolation='nearest')
 ```
 
 ```{code-cell} ipython3
@@ -2082,7 +2230,7 @@ th_z
 plt.figure(figsize=(8,8))
 plt.imshow(img, cmap='gray')
 
-mask_x = remove_small_objects(mask_opt*(img_s > th_x)*(sato_i > th1), sigma_i**2)
+mask_x = remove_small_objects(mask_opt*(img > th_lii)*(sato_i > th1), sigma_i**2)
 #mask_x = (mask_opt*(sato_i > th1))#, sigma_i**2)
 #mask_x = (mask_opt*(img > th_y)*(sato_i > th1))
 plt.contour(mask_x, colors=['lime'])
@@ -2141,7 +2289,7 @@ def iterative_exclusive_masks(img, sigmas):
         #cond_img = (img > bg) & (full_mask) & mask_skel
         cond_img_neg = (img > bg) & (full_mask ^ mask_sum) & (sato_i < th_lis)
         #th_lii = threshold_minimum(img[cond_img])
-        th_lii = -threshold_li(-img[cond_img])
+        #th_lii = -threshold_li(-img[cond_img])
         threshold_neg = -threshold_li(-img[cond_img_neg])
         #if th_lii <= threshold_neg + 3*np.std(img[cond_img_neg]):
         #    th_lii = bg
@@ -2150,6 +2298,8 @@ def iterative_exclusive_masks(img, sigmas):
         # -- distributions are really different
         # 
         #th_lii = uc.utils.estimate_mode(img[cond_img], top_cut=95, kind='max')
+        mode_x = uc.utils.estimate_mode(img[cond_img], top_cut=95, kind='max')
+        th_lii = mode_x - np.std(img[cond_img])
         print(th_lis, th_lii)
         
         fig, axs = plt.subplots(1,4,sharex='col', figsize=(12,4))
@@ -2157,27 +2307,28 @@ def iterative_exclusive_masks(img, sigmas):
         axs[0].hist(img[cond_img],50,density=True,histtype='step');
         axs[0].hist(img[cond_img_neg],50,density=True,histtype='step');
         axs[0].axvline(th_lii, color='m', ls='--')
+        axs[0].axvline(mode_x, color='g', ls='--')
         axs[0].axvline(threshold_neg, color='orange', ls='--')
         #axs[0].axvline(np.percentile(img[cond_img],95), color='gray', ls='--')
         #axs[1].imshow(cond_img*1.0 + mask_i, interpolation='nearest')
         axs[1].imshow(mask_skel*1.0 + cond_img +  mask_i, interpolation='nearest')
         
         # don't know how to have this built iteratively...
-        #mask_opt = sato_best_sigma  >= sigma2id[σ]
+        mask_opt = sato_best_sigma  >= sigma2id[σ]
         #mask_x = mask_opt*(img > th_lii)*(sato_i > th_lis)
         #mask_x = mask_opt*mask_i*(img > th_lii)
-        mask_x = mask_opt*(img > 0*th_lii)*mask_i
+        mask_x = mask_opt*(img > th_lii)*mask_i
         
-        #mask_final = mask_x
-        ridge_distance = skfmm.travel_time(1.0 - (mask_skel), mask_x)
-        mask_final = np.array((ridge_distance < 1.5*σ))*(~ridge_distance.mask)
+        mask_final = mask_x
+        #ridge_distance = skfmm.travel_time(1.0 - (mask_skel), mask_x)
+        #mask_final = np.array((ridge_distance < 1.5*σ))*(~ridge_distance.mask)
         #overlap_target = soma
         mask_final = uc.masks.select_overlapping(mask_final, mask_sum | soma_mask)
         #mask_final = ndi.binary_opening(ndi.binary_closing(mask_final))
         #mask_final = uc.masks.threshold_object_size(mask_final, (σ)**2)
 
         axs[2].imshow(mask_x + mask_final*1.0, interpolation='nearest')
-        
+        axs[2].set_title(f'σ={σ:1.1f}')
         if σ < np.max(sigmas):
             mask_final = mask_final & (mask_final ^ mask_sum)
 
@@ -2185,15 +2336,19 @@ def iterative_exclusive_masks(img, sigmas):
         mask_sum += mask_final.astype(bool)
         axs[3].imshow(mask_sum, interpolation='nearest')
         masks_exclusive[σ] = mask_final
-    return masks_exclusive
+    return masks_exclusive, mask_sum
 ```
 
 ```{code-cell} ipython3
-masks_exclusive2 = iterative_exclusive_masks(img, sigmas)
+masks_exclusive2, mask_sum = iterative_exclusive_masks(img, sigmas)
 ```
 
 ```{code-cell} ipython3
-plt.imshow(full_mask*(img < 50))
+plt.figure(figsize=(9,9))
+plt.imshow(img, cmap='gray')
+
+plt.imshow(np.dstack([mask_sum, np.zeros(img.shape), np.zeros(img.shape), 0.25*mask_sum]))
+plt.tight_layout()
 ```
 
 ```{code-cell} ipython3

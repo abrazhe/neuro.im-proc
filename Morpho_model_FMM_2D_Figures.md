@@ -385,36 +385,36 @@ astro.morpho.eigh = np.linalg.eigh
 ### Define speed as just brightness
 
 ```{code-cell} ipython3
-from imfun.bwmorph import neighbours
+#from imfun.bwmorph import neighbours
 ```
 
 ```{code-cell} ipython3
-def follow_to_root_nx(g, tip, max_nodes=1000000):
-    visited = {tip}
-    acc = [tip]
-    for i in range(max_nodes):
-        parents = list(g.predecessors(tip))
-        parents = [p for p in parents if not p in visited]
-        if not len(parents):
-            break
-        tip = parents[0]
-        visited.add(tip)
-        acc.append(tip)
-    if i >= max_nodes-1:
-        print('limit reached')
-    return acc
+# def follow_to_root_nx(g, tip, max_nodes=1000000):
+#     visited = {tip}
+#     acc = [tip]
+#     for i in range(max_nodes):
+#         parents = list(g.predecessors(tip))
+#         parents = [p for p in parents if not p in visited]
+#         if not len(parents):
+#             break
+#         tip = parents[0]
+#         visited.add(tip)
+#         acc.append(tip)
+#     if i >= max_nodes-1:
+#         print('limit reached')
+#     return acc
 
-def count_occurences_nx(G, shape):
-    counts =  np.zeros(shape)
-    for tip in tqdm(gu.get_tips(G)):
-        for p in follow_to_root_nx(G,tip):
-            n = G.nodes[p]
-            if 'count' in n:
-               n['count'] += 1
-            else:
-               n['count'] = 1
-            counts[p] += 1
-    return counts
+# def count_occurences_nx(G, shape):
+#     counts =  np.zeros(shape)
+#     for tip in tqdm(gu.get_tips(G)):
+#         for p in follow_to_root_nx(G,tip):
+#             n = G.nodes[p]
+#             if 'count' in n:
+#                n['count'] += 1
+#             else:
+#                n['count'] = 1
+#             counts[p] += 1
+#     return counts
 ```
 
 ## merging GD paths in stochastic FMM-based travel-time maps
@@ -516,7 +516,9 @@ plt.plot(init_pts[:,0], init_pts[:,1], 'r.')
 ```
 
 ```{code-cell} ipython3
-def plot_tree(tree, ax=None, random_colors=True, linecolor='m', lw=1, max_lw=10):
+def plot_tree(tree, ax=None, random_colors=True, 
+              mfc='r',
+              linecolor='m', lw=1, max_lw=10):
     
     if ax is None:
         fig, ax = plt.subplots(1,1)
@@ -524,7 +526,7 @@ def plot_tree(tree, ax=None, random_colors=True, linecolor='m', lw=1, max_lw=10)
     color = np.random.rand(3) if random_colors else linecolor
     for loc,n in tree.items():
         if n.parent is None:
-            ax.plot(n.v[1], n.v[0], 'r.')
+            ax.plot(n.v[1], n.v[0], '.', color=mfc, zorder=1e5)
         
         for ch in n.children:
             vx = np.vstack([n.v, ch.v])
@@ -575,14 +577,19 @@ gauss_lf = uc.utils.rescale(ndi.gaussian_filter(np.random.randn(*field_shape), 6
 ```
 
 ```{code-cell} ipython3
+uniform_field = np.ones(field_shape)*0.85
+uniform_field[0,0] = 0
+```
+
+```{code-cell} ipython3
 fields = [
-    np.ones(field_shape),
+    uniform_field,
     gauss_hf,
-    gauss_lf,
+    #gauss_lf,
     gauss_ms,
-    filaments_hf,
-    filaments_lf,
-    filaments_ms
+    filaments_hf*1.5,
+    #filaments_lf,
+    filaments_ms*1.5
 ]
 ```
 
@@ -595,9 +602,17 @@ ttms = [skfmm.travel_time(phi0, speed=m) for m in fields]
 ```
 
 ```{code-cell} ipython3
-fig,axs = plt.subplots(3,len(fields), figsize=(9,4))
+plt.rc('figure', dpi=150)
+```
+
+```{code-cell} ipython3
+#uc.utils.percentile_rescale(uniform_field)
+```
+
+```{code-cell} ipython3
+fig,axs = plt.subplots(3,len(fields), figsize=(9,5))
 for ax,m in zip(axs[0],fields):
-    ax.imshow(m, cmap='gray')
+    ax.imshow(m, vmin=0,vmax=1, cmap='viridis')
     ax.axis('off')
 for ax,tt in zip(axs[1],ttms):
     show_tt_map(tt,ax)
@@ -608,7 +623,96 @@ for ax,tt in zip(axs[2],ttms):
         plot_tree(tree,ax,random_colors=False,lw=0.75,linecolor='k')
         ax.axis([0,512,512,0])
         ax.axis('off')
-        
+plt.tight_layout()
+```
+
+## Fig. 2 Effect of speed field update
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+ttx = skfmm.travel_time(phi0, speed=filaments_ms)
+show_tt_map(ttx, with_boundary=True)
+bmask = ttx < np.percentile(ttx, 50)
+plt.imshow(bmask, alpha=0.25)
+```
+
+```{code-cell} ipython3
+seeds = np.array(np.where(bmask)).T
+#seeds = np.random.permutation(seeds)[:50]
+seeds = np.random.permutation(seeds)[:500]
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, 
+                                             seeds, 
+                                             update_amp=1,
+                                             tm_mask=~phi0,
+                                             batch_size=5)
+```
+
+```{code-cell} ipython3
+plot_tree(tree)
+```
+
+```{code-cell} ipython3
+plt.imshow(uc.clip_outliers(np.log2(1+speed)), interpolation='nearest'); plt.colorbar()
+```
+
+```{code-cell} ipython3
+%%time 
+
+fig, axs = plt.subplots(3,4,  figsize=(8,5))
+
+col = 0
+
+uamps = [0, 1, 0.5, 2]
+algs = ['linear', 'log', 'linear', 'power']
+
+for col, (uam, alg) in enumerate(zip(uamps,algs)): 
+    tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, seeds[:250], 
+                                                 update_amp=uam,
+                                                 scaling=alg,
+                                                 tm_mask=~phi0, batch_size=2)
+    plot_tree(tree, axs[0,col], random_colors=False, mfc='k', linecolor='k', lw=0.75)
+    axs[1,col].imshow(uc.clip_outliers(np.log2(1+speed)), cmap='viridis')
+    show_tt_map(ttx, ax=axs[2,col])
+    axs[0,col].axis([0,512, 512,0])
+
+
+for ax in np.ravel(axs):
+    ax.axis('off')
+
+plt.tight_layout()
+```
+
+## Fig 4. Sampling strategies
+
+```{code-cell} ipython3
+sorted_central = sorted(seeds[:500], key = lambda p: eu_dist(p, (255,255)))
+sorted_peripheral = sorted_central[::-1]
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, sorted_central, 
+                                             update_amp=1,
+                                             scaling='log',
+                                             tm_mask=~phi0, batch_size=2)
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, sorted_peripheral, 
+                                             update_amp=1,
+                                             scaling='log',
+                                             tm_mask=~phi0, batch_size=2)
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75)
 ```
 
 ## Multi-cellular network
@@ -1010,98 +1114,7 @@ init_pts = init_pts[np.argsort(dists)[::-1]]
 ```
 
 ```{code-cell} ipython3
-#speed = 25*uc.utils.rescale(ndi.gaussian_filter(np.random.randn(*field.shape),3))
 
-# speed0 = 10*uc.utils.rescale(
-#       1.5**2*ndi.gaussian_filter(np.random.randn(*field.shape),1.5)\
-#     + 3**2*ndi.gaussian_filter(np.random.randn(*field.shape),3)\
-#     + 6**2*ndi.gaussian_filter(np.random.randn(*field.shape),6)\
-#     + 12**2*ndi.gaussian_filter(np.random.randn(*field.shape),12))
-
-speed0 = uc.utils.rescale(
-    sum(s**2*morpho.sato2d(np.random.randn(*field.shape), s)
-        for s in (1.5, 3, 6, 12)))
-
-speed = speed0.copy()
-speed_gamma = 1
-
-ttx0 = skfmm.travel_time(phi0, speed=speed0**speed_gamma)
-
-# bumps = sum(ttx0[tuple(loc[::-1])]*0.1*gauss_blob(loc, 10, ttx.shape) 
-#             for loc in tqdm(gauss_locs))
-
-#ttx0 += bumps
-
-ttx0 = np.ma.filled(ttx0, np.max(ttx0))
-
-ttx = ttx0.copy()
-tree = dict()
-
-#plt.imshow(speed**speed_gamma, cmap='plasma'); plt.colorbar()
-
-
-ttx_acc = [ttx0]
-speed_acc = [speed]
-
-speed_update = np.zeros(field.shape)
-speed_corr = np.zeros(field.shape)
-#path_corr = np.zeros(field.shape)
-
-batch_size = 10
-Nseeds =  2500
-#Nseeds =  500
-
-fails = []
-alpha = 0.999999
-j = 0
-
-update_amp = 1
-
-for p0 in tqdm(np.random.permutation(init_pts)[:Nseeds]):
-#for p0 in tqdm(init_pts[:Nseeds]):
-#for p0 in tqdm(init_pts[:500]):
-#for p0 in tqdm(init_pts[::-1][:500]):
-    p0 = tuple(p0)
-    if ttx[p0] == np.max(ttx):
-        #print('skipping point: ', p0, 'because', ttx[p0])
-        continue
-    
-    try_path, finished = merging_rw_gd(ttx, p0, 
-                                       terminate_mask=tm_mask, 
-                                       pjitter=0.0, 
-                                       nsteps=10000, 
-                                       tree=tree)
-    #print(path[-1])
-    #end = tuple(path[-1])
-    #finished = tm_mask[end] or (end in explored)
-    if finished:
-        # slow part...
-        #speed_update = np.zeros(field.shape)
-        #speed_update[tuple(path[:,i] for i in (0,1))] += 1
-        #for i,p in enumerate(paths):
-        #    speed_update[tuple(p[:-1,i] for i in (0,1))] += 1
-        #speed_corr = ndi.gaussian_filter(speed_corr,1) + speed_update
-        apath = apath_to_root(tree[p0])
-        speed_corr[tuple(apath[:-1,i] for i in (0,1))] += update_amp
-        #speed = speed0 + np.log2(1 + speed_corr)
-        speed = speed0 + speed_corr**2
-
-        #speed_corr = speed_corr + speed_update
-        # [Q:] Do I need to Gauss-blur previous speed update?
-        #      Any reason for this at all?
-        #speed_corr = ndi.gaussian_filter(speed_corr,1) + speed_update
-        
-        #speed += (speed_corr*alpha**j)**(1/speed_gamma)
-        
-        if (not j%batch_size) and alpha**j > 1e-6:    
-            ttx = ttx + skfmm.travel_time(phi0, speed=speed)
-            ttx = np.ma.filled(ttx, np.max(ttx))
-        j += 1
-        #ttx_acc.append(ttx)
-        #speed_acc.append(speed)
-    else:
-        fails.append(np.array([n.v for n in try_path]))
-        print('not finished for loc', p0)
 ```
 
 ```{code-cell} ipython3
