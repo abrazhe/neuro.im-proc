@@ -695,24 +695,659 @@ plt.tight_layout()
 ## Fig 4. Sampling strategies
 
 ```{code-cell} ipython3
-sorted_central = sorted(seeds[:500], key = lambda p: eu_dist(p, (255,255)))
-sorted_peripheral = sorted_central[::-1]
+import visualization as vis
 ```
 
 ```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, sorted_central, 
-                                             update_amp=1,
-                                             scaling='log',
-                                             tm_mask=~phi0, batch_size=2)
-plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75)
+def gauss2d(xmu=0, ymu=0, xsigma=10, ysigma=10):
+    xsigma, ysigma = list(map(float, [xsigma, ysigma]))
+    return lambda x,y: np.exp(-(x-xmu)**2/(2*xsigma**2) - (y-ymu)**2/(2*ysigma**2))
+
+def gauss_blob(loc, sigma, shape):
+    xx,yy = np.mgrid[:shape[0],:shape[1]]
+    fn = gauss2d(xmu=loc[0],ymu=loc[1], xsigma=sigma,ysigma=sigma)
+    return fn(xx,yy)
 ```
 
 ```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, sorted_peripheral, 
+bmask_filt =  uc.masks.largest_region(ndi.binary_fill_holes(np.ma.filled(bmask)))
+```
+
+```{code-cell} ipython3
+reload(vis)
+plasma_x = vis.make_seethrough_colormap()
+jet_x = vis.make_seethrough_colormap('jet')
+reds_x = vis.make_seethrough_colormap('Reds')
+blues_x = vis.make_seethrough_colormap('Blues')
+spectralr_x = vis.make_seethrough_colormap('Spectral_r')
+```
+
+```{code-cell} ipython3
+central_prob = gauss_blob((255,255), 75, field_shape)*(bmask_filt)
+central_prob = ndi.gaussian_filter(central_prob, 5)
+central_prob = central_prob/np.sum(central_prob)
+plt.imshow(central_prob)
+```
+
+```{code-cell} ipython3
+periph_prob = gauss_blob((255,255), 200, field_shape) - gauss_blob((255,255), 175, field_shape)
+periph_prob = periph_prob**2
+periph_prob *= bmask_filt
+periph_prob = ndi.gaussian_filter(periph_prob, 5)
+periph_prob = periph_prob/np.sum(periph_prob)
+
+plt.imshow(periph_prob)
+```
+
+```{code-cell} ipython3
+uniform_prob = ndi.gaussian_filter(np.ones(field_shape)*bmask_filt,5)
+
+uniform_prob = uniform_prob/np.sum(uniform_prob)
+plt.imshow(uniform_prob)
+```
+
+```{code-cell} ipython3
+
+def sample_points(prob_map, size=500):
+    locs = np.array(np.where(prob_map>0)).T
+    idx = np.random.choice(len(locs), size=size, replace=False, p=prob_map[prob_map>0])
+    return locs[idx]
+```
+
+```{code-cell} ipython3
+uniform_locs = sample_points(uniform_prob) 
+periph_locs = sample_points(periph_prob)
+central_locs = sample_points(central_prob)
+
+uniform_locs_s   = sorted(uniform_locs, key=lambda p: eu_dist(p, (255,255)))
+
+# periph_locs_s = sorted(periph_locs, 
+#                        key=lambda p: -eu_dist(p,(255,255)))
+
+# periph_locs_s2 = sorted(periph_locs, key=lambda p: eu_dist(p,(255,0)))
+
+# central_locs_s = sorted(central_locs,key=lambda p: eu_dist(p,(255,255)))
+```
+
+```{code-cell} ipython3
+periph_locs_dense = sample_points(periph_prob,1000)
+```
+
+```{code-cell} ipython3
+# sorted_central = sorted(seeds[:500], key = lambda p: eu_dist(p, (255,255)))
+# sorted_peripheral = sorted_central[::-1]
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s, 
                                              update_amp=1,
-                                             scaling='log',
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s[::-1], 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              uniform_locs_s[::-1], 
+#                                              update_amp=1,
+#                                              scaling='log',
+#                                              tm_mask=~phi0, 
+#                                              batch_size=2)
+# plt.figure()
+# plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+# plt.tight_layout(); ax.axis('off')
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             periph_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(periph_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              periph_locs_s, 
+#                                              update_amp=1,
+#                                              scaling='power',
+#                                              tm_mask=~phi0,
+#                                              batch_size=2)
+# plt.figure()
+# plt.imshow(np.ma.masked_less(periph_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+# ax.axis('off')
+```
+
+```{code-cell} ipython3
+phi0_asym = np.zeros(field_shape,bool)
+phi0_asym[255, 400] = True
+phi0_asym = ~ndi.binary_dilation(phi0_asym,iterations=3)
+```
+
+```{code-cell} ipython3
+#phi0_asym.shape
+```
+
+```{code-cell} ipython3
+plt.imshow(filaments_ms + 1e4*periph_prob)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms+ 1e4*periph_prob, 
+                                             phi0_asym, 
+                                             periph_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0_asym, 
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(periph_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+plt.imshow(filaments_ms+ 1e9*periph_prob**2)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms+ 1e9*periph_prob**2, 
+                                             phi0_asym.T, 
+                                             periph_locs_dense, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0_asym.T,
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(periph_prob,1e-10), cmap='cool', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='forestgreen', lw=1, ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+iffm.assign_diameters(tree, min_diam=0.5, max_diam=5, gamma=1.5)
+```
+
+```{code-cell} ipython3
+#plt.plot()
+```
+
+```{code-cell} ipython3
+plt.figure()
+plt.imshow(np.ma.masked_less(periph_prob,1e-10), cmap='cool', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='r', linecolor='forestgreen', lw=1, max_lw=1, ax=ax)
+
+for p in periph_locs_dense:
+    if np.random.rand() < 0.15:
+        color = np.clip(1 - np.random.rand(3)**2 + (0.3,0.25,0.75),0,1)
+        angle = np.random.uniform(-60,60)
+        size = np.random.uniform(2,16)
+        zorder=np.random.uniform(0,20)
+        ax.plot(p[1],p[0], color=color, marker=(6, 2, angle), alpha=0.95,
+                ms=size,zorder=zorder)
+    
+    elif np.random.rand() < 0.025:
+        ax.plot(p[1],p[0], color='r', marker='o', ms=5, alpha=0.5)
+        
+plt.tight_layout(); ax.axis('off')
+plt.savefig('/tmp/ny-ring.png', )
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+np.max([n.diam for loc,n in tree.items()])
+```
+
+```{code-cell} ipython3
+#cartesian2polar(*uniform_locs[4])
+```
+
+```{code-cell} ipython3
+# uniform_locs_s2 = sorted(uniform_locs, 
+#                          key=lambda x: cartesian2polar(x[0]-255,x[1]-255)[1])
+uniform_locs_s2 = sorted(uniform_locs, 
+                         key=lambda x: -eu_dist(x, (0,255)))
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s2, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+plt.figure()
+plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+plt.imshow(filaments_ms + 5e3*central_prob)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             central_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
                                              tm_mask=~phi0, batch_size=2)
-plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75)
+plt.figure()
+plt.imshow(np.ma.masked_less(central_prob,1e-10), cmap='GnBu', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+# plt.figure()
+# plt.imshow(np.ma.masked_less(central_prob,1e-10), cmap='GnBu', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+# plt.tight_layout(); ax.axis('off')
+```
+
+```{code-cell} ipython3
+prob_vmax = np.max([np.max(uniform_prob), np.max(central_prob), np.max(periph_prob)])
+```
+
+```{code-cell} ipython3
+fig, axs = plt.subplots(2,3, figsize=(9,6), gridspec_kw=dict(hspace=0.05, wspace=0.05))
+
+cmap='GnBu'
+
+# -- uniform prob, ordered sampling (center)
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+
+ax = axs[1,0]
+ax.imshow(np.ma.masked_less(uniform_prob,1e-10), 
+          vmax=prob_vmax,
+          cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+
+# -- uniform prob, ordered sampling (periphery)
+ax = axs[0,0]
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s[::-1], 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+
+ax.imshow(np.ma.masked_less(uniform_prob,1e-10), 
+          vmax=prob_vmax,
+          cmap=cmap, alpha=0.25)
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+
+
+# -- non-uniform prob (periphery), uniform sampling
+ax = axs[0,1]
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             periph_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+ax.imshow(np.ma.masked_less(periph_prob,1e-10), cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+
+
+# -- non-uniform prob (center), uniform sampling
+ax = axs[1,1]
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             central_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, batch_size=2)
+ax.imshow(np.ma.masked_less(central_prob,1e-10), 
+          vmax=prob_vmax,
+          cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+
+# -- fundus
+ax = axs[0,2]
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms+ 1e4*periph_prob, 
+                                             phi0_asym, 
+                                             periph_locs, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0_asym, 
+                                             batch_size=2)
+ax.imshow(np.ma.masked_less(periph_prob,1e-10), 
+          vmax=prob_vmax,
+          cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+
+
+# -- taxis
+ax = axs[1,2]
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_s2, 
+                                             update_amp=1,
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=2)
+
+ax.imshow(np.ma.masked_less(uniform_prob,1e-10), 
+          vmax=prob_vmax,
+          cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+
+for ax in np.ravel(axs):
+   ax.axis('off')
+fig.tight_layout()
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+plt.figure()
+ax = plt.gca()
+ax.imshow(np.ma.masked_less(uniform_prob,1e-10), vmax=prob_vmax,
+          cmap=cmap, alpha=0.25, )
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, 
+#                                              central_locs_s, 
+#                                              update_amp=1,
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, batch_size=2)
+# plt.figure()
+# plt.imshow(np.ma.masked_less(central_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+# ax.axis('off')
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, phi0, 
+#                                              central_locs_s[::-1], 
+#                                              update_amp=1,
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, batch_size=2)
+# plt.figure()
+# plt.imshow(np.ma.masked_less(central_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+# plt.tight_layout(); ax.axis('off')
+```
+
+```{code-cell} ipython3
+def iterative_rbf_sampler(mask, seed=None,  prob_map=None, sigma=12, iterations=500):
+    locs = np.array(np.where(mask)).T
+    if prob_map is None:
+        prob_map = 1.*mask
+        
+    loc_idx = np.arange(len(locs))
+    if seed is None:
+        seed = np.random.permutation(locs)[0]
+    field = np.zeros(mask.shape)
+    lastloc = seed
+    acc = [seed]
+    for i in tqdm(range(iterations)):
+        field = gauss_blob(lastloc, sigma, mask.shape)
+        proba = field*prob_map*mask
+        proba = proba[mask]/np.sum(proba[mask])
+        new_id = np.random.choice(loc_idx,size=1,p=proba)
+        newloc = tuple(locs[new_id][0])
+        lastloc = newloc
+        acc.append(newloc)
+    return acc,field
+```
+
+```{code-cell} ipython3
+bmask_filt[(150,390)]
+```
+
+```{code-cell} ipython3
+locs_x,field_x = iterative_rbf_sampler(bmask_filt, (150,390),
+                                       iterations=4000,
+                                       prob_map=periph_prob, sigma=12)
+```
+
+```{code-cell} ipython3
+plt.imshow(field_x)
+```
+
+```{code-cell} ipython3
+locs_x[1]
+```
+
+```{code-cell} ipython3
+locs_x = np.array(locs_x)
+```
+
+```{code-cell} ipython3
+plt.imshow(field_x)
+plt.scatter(locs_x[:,1],locs_x[:,0], c=np.arange(len(locs_x)), s=1, cmap='hot_r')
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+len(locs_x)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             locs_x[::4], 
+                                             update_amp=1,
+                                             scaling='power',
+                                             speed_gamma=0.1,
+                                             tm_mask=~phi0, 
+                                             batch_size=3)
+plt.figure()
+plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+p_locs = np.array(np.where(bmask_filt)).T
+p_locs = np.random.permutation(p_locs)[:20000]
+p_locs = sorted(p_locs, key=lambda x: eu_dist(x,(255,255)))[::-1]
+```
+
+```{code-cell} ipython3
+np.sum(bmask_filt)
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             p_locs[::40], 
+                                             update_amp=1,
+                                             scaling='power',
+                                             speed_gamma=0.01,
+                                             tm_mask=~phi0, batch_size=5)
+plt.figure()
+plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+ax = plt.gca()
+plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+plt.tight_layout(); ax.axis('off')
+plt.figure(); plt.imshow(np.log2(1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+10**0.001
+```
+
+```{code-cell} ipython3
+# def iterative_build_tree_sampling(speed0, phi0, seed,
+#                                   iterations=100, mask=None, tm_mask=None,
+#                                   batch_size=1):
+#     speed = speed0.copy()
+#     if mask is None:
+#         mask = speed > 0
+#     ttx0 = skfmm.travel_time(phi0, speed=speed0) 
+#     ttx0 = np.ma.filled(ttx0, np.max(ttx0))
+#     ttx = ttx0.copy()
+#     tree = dict()
+#     speed_upd = np.zeros(speed.shape)    
+#     fails = []
+#     loc = tuple(seed)
+#     update_fn = lambda m:m
+    
+#     all_locs = np.array(np.where(mask)).T
+#     loc_idx = np.arange(len(all_locs))
+    
+#     for j in tqdm(range(iterations)):
+#         if ttx[loc] == np.max(ttx):
+#             continue
+            
+#         try_path, finished = iffm.merging_rw_gd(ttx, loc, 
+#                                            terminate_mask=tm_mask, 
+#                                            pjitter=0.0, 
+#                                            nsteps=10000, 
+#                                            tree=tree)
+#         if finished:
+#             apath = iffm.apath_to_root(tree[loc])
+#             speed_upd[tuple(apath[:-1,i] for i in (0,1))] += 1
+                                                    
+#             speed = speed0 + update_fn(speed_upd)
+    
+#             if (not j%batch_size):    
+#                 ttx = skfmm.travel_time(phi0, speed=speed)
+#                 ttx = np.ma.filled(ttx, np.max(ttx))
+#         else:
+#             fails.append(np.array([n.v for n in try_path]))
+#             print('not finished for loc', loc)
+
+#         proba = mask*(ttx.max()/(1+ttx))
+#         proba = proba[mask]/np.sum(proba[mask])
+#         loc = np.random.choice(loc_idx, size=1, replace=False,p=proba)
+#         loc = tuple(all_locs[loc[0]])
+#     return tree, speed, ttx
+```
+
+```{code-cell} ipython3
+#np.random.choice(np.arange(10), size=1)[0]
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iterative_build_tree_sampling(filaments_ms, 
+#                                              phi0, 
+#                                              (150,390), 
+#                                              mask = bmask_filt,
+#                                              iterations=500,
+#                                              tm_mask=~phi0, batch_size=2)
+# plt.figure()
+# plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# ax = plt.gca()
+# plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75,ax=ax)
+# plt.tight_layout(); ax.axis('off')
+# plt.figure(); plt.imshow(np.log2(0.1+speed), cmap='plasma')
+```
+
+```{code-cell} ipython3
+
 ```
 
 ## Multi-cellular network
@@ -890,6 +1525,8 @@ plt.imshow(ttx,cmap='BuPu', vmax=np.percentile(ttx[ttx<np.max(ttx)],99)); plt.co
 tm_mask = ndi.binary_dilation(ttx<=np.percentile(ttx,0.5),iterations=1)
 plt.imshow(tm_mask)
 ```
+
+---
 
 ```{code-cell} ipython3
 def get_tips(tree):

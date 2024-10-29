@@ -1,6 +1,22 @@
 import graph_utils as gu
 import numpy as np
 
+from matplotlib import pyplot as plt
+import matplotlib as mpl
+
+def make_seethrough_colormap(base_name='plasma', gamma=1.5,kcut=5):
+    cm_base = plt.cm.get_cmap(base_name)
+    cmx = cm_base(np.linspace(0,1,256))
+    v = np.linspace(0,1,256)
+    cmx[:,-1] = np.clip(2*(v/(0.15 + v))**gamma,0,1)
+    cmx[:kcut,-1] = 0
+    cdict = dict(red=np.array((np.arange(256)/255, cmx[:,0], cmx[:,0])).T,
+                 green=np.array((np.arange(256)/255, cmx[:,1], cmx[:,1])).T,
+                 blue= np.array((np.arange(256)/255, cmx[:,2], cmx[:,2])).T,
+                 alpha= np.array((np.arange(256)/255, cmx[:,3], cmx[:,3])).T)
+    cm = mpl.colors.LinearSegmentedColormap(base_name + '-x',  cdict, 256)
+    return cm
+
 def view_graph_as_shapes(g, viewer, color=None, kind='points', name=None):
     """
     display nodes of graph g in napari viewer as points or as lines
@@ -9,7 +25,10 @@ def view_graph_as_shapes(g, viewer, color=None, kind='points', name=None):
         color = np.random.rand(3)
     pts = np.array(g.nodes)
 
-    kw = dict(face_color=color, edge_color=color, blending='translucent_no_depth', name=name)
+    kw = dict(face_color=color, 
+              edge_color=color, 
+              blending='translucent_no_depth', 
+              name=name)
     #kw = dict(face_color=color, edge_color=color,  name=name)
     if kind == 'points':
         viewer.add_points(pts, size=1, symbol='square', **kw)
