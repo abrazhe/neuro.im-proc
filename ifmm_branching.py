@@ -74,6 +74,31 @@ def count_occurences(tree, shape):
             counts[tuple(n.v)] += 1
     return counts
     
+def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0):
+    for loc,n in tree.items():
+        n.diam = 0
+        
+    for tip in tqdm(get_tips(tree)):
+        for n in follow_to_root(tip):
+            if not hasattr(n, 'diam'):
+                n.diam = 0
+            n.diam += min_diam**gamma
+    for loc,n in tree.items():
+        n.diam = min(max_diam, n.diam**(1/gamma))
+
+
+def assign_diameters_nx(G, min_diam=0.01, max_diam=6, gamma=1.0):
+    for n in G:
+        G.nodes[n]['diam'] = 0
+        
+    for tip in tqdm(gu.get_tips(G)):
+        for p in follow_to_root_nx(G,tip):
+            n = G.nodes[p]
+            n['diam'] += min_diam**gamma
+    for n in G:
+        G.nodes[n]['diam'] = min(max_diam, G.nodes[n]['diam']**(1/gamma))
+
+
 
 def plot_tree(tree, ax=None, random_colors=True, linecolor='m', lw=1, max_lw=10):
     
@@ -224,6 +249,8 @@ def iterative_build_tree(speed, phi0, seeds,
         update_fn = lambda m:m**speed_gamma
     elif scaling == 'log':
         update_fn = lambda m: np.log2(1 + m)
+    elif scaling == 'exp':
+        update_fn = lambda m: np.exp(m*speed_gamma)
     else:
         update_fn = lambda m:m
         
@@ -244,6 +271,7 @@ def iterative_build_tree(speed, phi0, seeds,
             apath = apath_to_root(tree[p0])
             speed_upd[tuple(apath[:-1,i] for i in (0,1))] +=\
                                                     update_amp
+            #speed += update_fn(speed_upd)
             speed = speed0 + update_fn(speed_upd)
     
             if (not j%batch_size) and alpha**j > 1e-6:    
