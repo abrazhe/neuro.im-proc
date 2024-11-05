@@ -4,6 +4,16 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
+
+
+def multi_savefig(fig, name, formats =('svg', 'png'), **kwargs):
+    if 'bbox_inches' not in kwargs:
+        kwargs['bbox_inches'] = 'tight'
+    for f in formats:
+        fig.savefig('.'.join([name,f]), **kwargs)
+
+
+
 def make_seethrough_colormap(base_name='plasma', gamma=1.5,kcut=5):
     cm_base = plt.cm.get_cmap(base_name)
     cmx = cm_base(np.linspace(0,1,256))

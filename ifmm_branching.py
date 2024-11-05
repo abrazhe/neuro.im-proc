@@ -19,18 +19,11 @@ def follow_to_root_nx(g, tip, max_nodes=1000000):
         print('limit reached')
     return acc
 
-def count_occurences_nx(G, shape):
-    counts =  np.zeros(shape)
-    for tip in tqdm(gu.get_tips(G)):
-        for p in follow_to_root_nx(G,tip):
-            n = G.nodes[p]
-            if 'count' in n:
-               n['count'] += 1
-            else:
-               n['count'] = 1
-            counts[p] += 1
-    return counts
 
+
+
+def get_tips_nx(g):
+    return {n for n in g.nodes if len(list(g.successors(n))) == 0}
 
 def get_tips(tree):
     return [n for n in tree.values() if not len(n.children)]
@@ -51,6 +44,29 @@ def follow_to_root(tip, max_nodes=1000000):
             break
     return acc
 
+def prune_twig(tip,min_length=5,max_count_diff=5):
+    acc = [tip]
+    starting_count = tip.count
+    made_cut = False
+    for i in range(min_length):
+        parent = tip.parent
+        if parent is None:
+            break
+        # found branch point:
+        if len(parent.children) > 1:
+            count_diff = parent.count - starting_count
+            if count_diff > max_count_diff:
+                #cut the twig
+                parent.unlink(tip)
+                made_cut =True
+                break
+        else:
+            tip = parent
+            acc.append(tip)
+    if not made_cut:
+        acc = []
+    return acc
+
 # def follow_to_root_rec(tip):
 #     if not tip.parent:
 #         return [tip]
@@ -62,16 +78,42 @@ def follow_to_root_rec(tip):
 
 def apath_to_root(tip):
     return np.array([n.v for n in follow_to_root(tip)])
-    
-def count_occurences(tree, shape):
+
+
+
+def count_occurences_nx(G, shape):
     counts =  np.zeros(shape)
+    for p in G:
+        n = G.nodes[p]
+        n['count'] = 0
+        
+    for tip in tqdm(get_tips_nx(G)):
+        for p in follow_to_root_nx(G,tip):
+            n = G.nodes[p]
+            if 'count' in n:
+               n['count'] += 1
+            else:
+               n['count'] = 1
+            counts[p] += 1
+    return counts
+
+def count_occurences(tree, shape=None):
+    for loc,n in tree.items():
+        n.count = 0
+        
+    if shape is not None:
+        counts =  np.zeros(shape)
+    else:
+        counts = None
+    
     for tip in tqdm(get_tips(tree)):
         for n in follow_to_root(tip):
             if hasattr(n, 'count'):
                n.count += 1
             else:
                n.count = 1
-            counts[tuple(n.v)] += 1
+            if counts is not None:
+                counts[tuple(n.v)] += 1
     return counts
     
 def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0):
@@ -91,7 +133,7 @@ def assign_diameters_nx(G, min_diam=0.01, max_diam=6, gamma=1.0):
     for n in G:
         G.nodes[n]['diam'] = 0
         
-    for tip in tqdm(gu.get_tips(G)):
+    for tip in tqdm(get_tips_nx(G)):
         for p in follow_to_root_nx(G,tip):
             n = G.nodes[p]
             n['diam'] += min_diam**gamma
@@ -131,9 +173,13 @@ class PathNode:
         child.parent = self
         if not child in self.children:
             self.children.append(child)
+    def unlink(self,child):
+        child.parent = None
+        if child in self.children:
+            self.children = [ch for ch in self.children if ch !=child]
         
 
-def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=100, tree=None, pjitter=0.15):
+def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=10000, tree=None, pjitter=0.15):
 
     # tree is a hasmap, keys are locations, values are PathNodes
     if tree is None:
@@ -142,14 +188,19 @@ def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=100, tree=None, pjitte
     if terminate_mask is None:
         terminate_mask = np.zeros(field.shape, bool)
 
+    path_success = False
+    
     p0 = tuple(map(int, p0))
-    path = [PathNode(p0)]
-    traj = [p0]
+    if p0 in tree:
+        path_success = True
+        nsteps = 0
+        path = [tree[p0]]
+    else:
+        path = [PathNode(p0)]
+        traj = [p0]
 
     visited = set(p0)
 
-    path_success = False
-    
     for i in range(nsteps):
         prevnode = path[-1]
         p = tuple(prevnode.v)
@@ -225,7 +276,8 @@ def iterative_build_tree(speed, phi0, seeds,
                          update_amp=1,
                          tm_mask = None,
                          scaling='linear',
-                         batch_size=10, 
+                         batch_size=1, 
+                         batch_size_alpha=1,
                          speed_gamma = 2,
                          alpha=1.0):
     speed0 = speed.copy()    
@@ -238,7 +290,8 @@ def iterative_build_tree(speed, phi0, seeds,
     tree = dict()
     
     speed_upd = np.zeros(speed.shape)    
-    
+    count_unreachable =0
+    count_seeds = 0
     fails = []
     
     j = 0
@@ -256,10 +309,12 @@ def iterative_build_tree(speed, phi0, seeds,
         
     
     for p0 in tqdm(seeds):
+        count_seeds +=1
         p0 = tuple(map(int, p0))
 
         # skip unreacheable points
         if ttx[p0] == np.max(ttx):
+            count_unreachable += 1
             continue
         
         try_path, finished = merging_rw_gd(ttx, p0, 
@@ -274,13 +329,18 @@ def iterative_build_tree(speed, phi0, seeds,
             #speed += update_fn(speed_upd)
             speed = speed0 + update_fn(speed_upd)
     
-            if (not j%batch_size) and alpha**j > 1e-6:    
+            if (not j%int(batch_size)) and alpha**j > 1e-6:    
                 #ttx = ttx + skfmm.travel_time(phi0, speed=speed)
                 ttx = skfmm.travel_time(phi0, speed=speed)
                 ttx = np.ma.filled(ttx, np.max(ttx))
+                batch_size *= batch_size_alpha
             j += 1
         else:
             fails.append(np.array([n.v for n in try_path]))
-            print('not finished for loc', p0)    
+            print('not finished for loc', p0) 
+    print('tree size:', len(tree))
+    print('failed:', len(fails))
+    print('visited:', count_seeds)
+    print('unreachable points:', count_unreachable)
     return tree, speed, ttx
     
