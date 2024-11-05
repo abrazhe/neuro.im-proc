@@ -1381,7 +1381,7 @@ reload(iffm)
 tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
                                              phi0, 
                                              uniform_locs_dense, 
-                                             scaling='log',
+                                             scaling='linear',
                                              tm_mask=~phi0, 
                                              batch_size=1,
                                              batch_size_alpha=1.1)
@@ -1394,7 +1394,46 @@ plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma
 ```
 
 ```{code-cell} ipython3
-#
+reload(iffm)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_dense[:1000], 
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=1,
+                                             batch_size_alpha=1.1)
+#plt.figure()
+#plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+#ax = plt.gca()
+#plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+#plt.tight_layout(); ax.axis('off')
+#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+                                             phi0, 
+                                             uniform_locs_dense[:1000], 
+                                             scaling='linear',
+                                             tm_mask=~phi0, 
+                                             batch_size=1,
+                                             batch_size_alpha=1.1,
+                                             do_phi0_update=True,
+                                             max_count_phi0=10)
+#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+```
+
+```{code-cell} ipython3
+
 ```
 
 ```{code-cell} ipython3

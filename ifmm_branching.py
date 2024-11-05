@@ -44,7 +44,7 @@ def follow_to_root(tip, max_nodes=1000000):
             break
     return acc
 
-def prune_twig(tip,min_length=5,max_count_diff=5):
+def prune_twig(tip, min_length=5, max_count_diff=5):
     acc = [tip]
     starting_count = tip.count
     made_cut = False
@@ -115,7 +115,7 @@ def count_occurences(tree, shape=None):
             if counts is not None:
                 counts[tuple(n.v)] += 1
     return counts
-    
+
 def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0):
     for loc,n in tree.items():
         n.diam = 0
@@ -177,9 +177,10 @@ class PathNode:
         child.parent = None
         if child in self.children:
             self.children = [ch for ch in self.children if ch !=child]
-        
 
-def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=10000, tree=None, pjitter=0.15):
+
+def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=10000, tree=None, 
+                  pjitter=0.15):
 
     # tree is a hasmap, keys are locations, values are PathNodes
     if tree is None:
@@ -279,6 +280,8 @@ def iterative_build_tree(speed, phi0, seeds,
                          batch_size=1, 
                          batch_size_alpha=1,
                          speed_gamma = 2,
+                         do_phi0_update=False,
+                         max_count_phi0=1e20,
                          alpha=1.0):
     speed0 = speed.copy()    
     speed = speed0.copy()
@@ -317,6 +320,7 @@ def iterative_build_tree(speed, phi0, seeds,
             count_unreachable += 1
             continue
         
+        
         try_path, finished = merging_rw_gd(ttx, p0, 
                                            terminate_mask=tm_mask, 
                                            pjitter=0.0, 
@@ -331,7 +335,17 @@ def iterative_build_tree(speed, phi0, seeds,
     
             if (not j%int(batch_size)) and alpha**j > 1e-6:    
                 #ttx = ttx + skfmm.travel_time(phi0, speed=speed)
-                ttx = skfmm.travel_time(phi0, speed=speed)
+    
+                #phi_try = phi0.copy()
+                if do_phi0_update:
+                    phi_try = ~((speed_upd < max_count_phi0)*(speed_upd>0))
+                    tm_mask = ~phi_try                
+                else:
+                    phi_try = phi0
+                    
+                
+                
+                ttx = skfmm.travel_time(phi_try, speed=speed)
                 ttx = np.ma.filled(ttx, np.max(ttx))
                 batch_size *= batch_size_alpha
             j += 1
@@ -343,4 +357,4 @@ def iterative_build_tree(speed, phi0, seeds,
     print('visited:', count_seeds)
     print('unreachable points:', count_unreachable)
     return tree, speed, ttx
-    
+
