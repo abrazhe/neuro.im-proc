@@ -1365,6 +1365,44 @@ reload(iffm)
 ## Dense seeds and branch diameters
 
 ```{code-cell} ipython3
+def gauss2d(xmu=0, ymu=0, xsigma=10, ysigma=10):
+    xsigma, ysigma = list(map(float, [xsigma, ysigma]))
+    return lambda x,y: np.exp(-(x-xmu)**2/(2*xsigma**2) - (y-ymu)**2/(2*ysigma**2))
+
+def gauss_blob(loc, sigma, shape):
+    xx,yy = np.mgrid[:shape[0],:shape[1]]
+    fn = gauss2d(xmu=loc[0],ymu=loc[1], xsigma=sigma,ysigma=sigma)
+    return fn(xx,yy)
+```
+
+```{code-cell} ipython3
+def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, soma_mask=None):
+    if soma_mask is None:
+        soma_mask = np.zeros(shape, bool)
+    portrait = np.zeros(shape)
+    px_locs = np.indices(shape).reshape((2,-1)).T
+    ktree = sp.spatial.KDTree(px_locs)
+    for loc, n in tqdm(tree.items()):
+        diam = n.diam
+        if diam >= min_diam_show:
+            amp = np.log10(0.1+n.count)
+            #amp = diam
+            #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
+            knns = ktree.query_ball_point(loc, diam/2)
+            locs = px_locs[knns]
+            for loc_ in locs:
+                dist = eu_dist(loc, loc_)
+                ampr = amp*np.exp(-dist**2/(diam**2/4))
+                l = tuple(loc_)
+                portrait[l] = np.maximum(portrait[l],ampr)
+    if fill_soma:
+        portrait[soma_mask] = np.percentile(portrait[ndi.binary_dilation(soma_mask)],99)
+    #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
+    return portrait
+    
+```
+
+```{code-cell} ipython3
 print(np.sum(bmask_filt))
 uniform_locs_dense = sample_points(uniform_prob, np.sum(bmask_filt)) 
 ```
@@ -1398,9 +1436,77 @@ reload(iffm)
 ```
 
 ```{code-cell} ipython3
+Ntotal = len(uniform_locs_dense)
+```
+
+```{code-cell} ipython3
+#pts_fractions = 0.002*3**np.arange(6)
+pts_fractions = 0.002*4**np.arange(5)
+pts_fractions
+```
+
+```{code-cell} ipython3
+tree_kw = dict(scaling='linear', tm_mask=~phi0, batch_size=1, batch_size_alpha=1.1,)
+                                            
+
+params = [
+    tree_kw,
+    tree_kw | dict(do_phi0_update=True, max_count_phi0=32),
+    tree_kw | dict(do_phi0_update=True, max_count_phi0=32),
+    tree_kw | dict(do_phi0_update=True, max_count_phi0=32)]
+
+pts_samplers = [
+    lambda n: uniform_locs_dense[:round(int(n))],
+    lambda n: uniform_locs_dense[:round(int(n))],
+    lambda n: uc.scramble.local_jitter(np.array(sorted(uniform_locs_dense[:round(int(n))],
+                                                       key=lambda x: -eu_dist(x, (255,255))))),
+    lambda n: uc.scramble.local_jitter(np.array(sorted(uniform_locs_dense[:round(int(n))],
+                                                       key=lambda x: eu_dist(x, (255,255))))),
+]
+    
+    
+    
+```
+
+```{code-cell} ipython3
+%%time 
+
+fig, axs = plt.subplots(len(params)+1,len(pts_fractions), figsize=(15,6),
+                        gridspec_kw=dict(hspace=0.05, wspace=0.05),
+                       )
+
+for j, (pset, sampler) in enumerate(zip(tqdm(params,desc='params'), pts_samplers)):
+    for k,frac in enumerate(pts_fractions):
+        n_pts = int(round(Ntotal*frac))
+        pts = sampler(n_pts)
+        if j==0:
+            ax = axs[0,k]
+            ax.plot(pts[:,0], pts[:,1], 'k,')
+            ax.axis('square')
+            ax.axis([0,512,512,0])
+            ax.axis('off')
+            ax.set_title(f'{round(100*frac,2)}%')
+        ax = axs[j+1,k]
+        
+        tree, speed, ttx = iffm.iterative_build_tree(filaments_ms,phi0,pts, **pset)
+        counts = iffm.count_occurences(tree, speed.shape)
+        iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
+        portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
+        ax.imshow(portrait, cmap='BuPu')
+        ax.plot(255,255, 'o', color='violet', mfc='none', ms=10)
+        ax.axis('off')
+
+plt.tight_layout()
+```
+
+```{code-cell} ipython3
+fig
+```
+
+```{code-cell} ipython3
 tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
                                              phi0, 
-                                             uniform_locs_dense[:2**16], 
+                                             uniform_locs_dense[:int(round(Ntotal*0.002))], 
                                              scaling='linear',
                                              tm_mask=~phi0, 
                                              batch_size=1,
@@ -1413,10 +1519,40 @@ tree, speed, ttx = iffm.iterative_build_tree(filaments_ms,
 #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
 #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
 counts = iffm.count_occurences(tree, speed.shape)
-plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu')
-plt.plot(255,255,'o',color='purple',mfc='none')
+#plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu')
+iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
+portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
+plt.imshow(portrait,  cmap='BuPu')
+#plt.plot(255,255,'o',color='purple',mfc='none')
+plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
 
-plt.colorbar()
+plt.axis('off')
+#plt.colorbar()
+```
+
+```{code-cell} ipython3
+plt.imshow(portrait,  cmap='BuPu')
+plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
+plt.axis('off')
+```
+
+```{code-cell} ipython3
+
+
+# iffm.assign_diameters_logcounts(tree,min_diam=1,max_diam=16)
+
+# portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
+
+# plt.imshow(portrait, cmap='BuPu')
+```
+
+```{code-cell} ipython3
+
+
+```
+
+```{code-cell} ipython3
+#plot_tree(tree, random_colors=False)
 ```
 
 ```{code-cell} ipython3
@@ -1481,15 +1617,15 @@ plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
-plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu'); plt.axis('off')
-plt.plot(255,255,'o',color='purple',mfc='none')
-plt.colorbar()
+# plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu'); plt.axis('off')
+# plt.plot(255,255,'o',color='purple',mfc='none')
+# plt.colorbar()
 ```
 
 ```{code-cell} ipython3
 tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
                                              phi0, 
-                                             sorted(uniform_locs_dense[:2**16], 
+                                             sorted(uniform_locs_dense[:250], 
                                                     key=lambda x: eu_dist(x, (255,255))),
                                              scaling='linear',
                                              tm_mask=~phi0, 
@@ -1505,10 +1641,13 @@ plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
-plt.figure(); 
-plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu'); plt.axis('off')
-plt.colorbar()
-plt.plot(255,255,'o',color='purple',mfc='none')
+
+
+iffm.assign_diameters(tree,min_diam=0.25,gamma=2.5,max_diam=9)
+
+portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
+
+plt.imshow(portrait,  cmap='BuPu')
 ```
 
 **NB** make diameters proportional to log counts?
@@ -1589,28 +1728,7 @@ plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
-def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, soma_mask=None):
-    if soma_mask is None:
-        soma_mask = np.zeros(shape, bool)
-    portrait = np.zeros(shape)
-    px_locs = np.indices(shape).reshape((2,-1)).T
-    ktree = sp.spatial.KDTree(px_locs)
-    for loc, n in tqdm(tree.items()):
-        diam = n.diam
-        if diam >= min_diam_show:
-            amp = np.log10(0.1+n.count)
-            #amp = diam
-            #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
-            knns = ktree.query_ball_point(loc, diam/2)
-            locs = px_locs[knns]
-            for loc_ in locs:
-                l = tuple(loc_)
-                portrait[l] = np.maximum(portrait[l],amp)
-    if fill_soma:
-        portrait[soma_mask] = np.percentile(portrait[ndi.binary_dilation(soma_mask)],99)
-    #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
-    return portrait
-    
+
 ```
 
 ```{code-cell} ipython3
@@ -1989,14 +2107,7 @@ def plot_tree(tree, ax=None, random_colors=True, linecolor='m', lw=1, max_lw=10)
 ```
 
 ```{code-cell} ipython3
-def gauss2d(xmu=0, ymu=0, xsigma=10, ysigma=10):
-    xsigma, ysigma = list(map(float, [xsigma, ysigma]))
-    return lambda x,y: np.exp(-(x-xmu)**2/(2*xsigma**2) - (y-ymu)**2/(2*ysigma**2))
 
-def gauss_blob(loc, sigma, shape):
-    xx,yy = np.mgrid[:shape[0],:shape[1]]
-    fn = gauss2d(xmu=loc[0],ymu=loc[1], xsigma=sigma,ysigma=sigma)
-    return fn(xx,yy)
 ```
 
 ```{code-cell} ipython3
