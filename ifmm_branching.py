@@ -97,7 +97,7 @@ def count_occurences_nx(G, shape):
             counts[p] += 1
     return counts
 
-def count_occurences(tree, shape=None):
+def count_occurences(tree, shape=None, progress_bar=False):
     for loc,n in tree.items():
         n.count = 0
         
@@ -106,7 +106,7 @@ def count_occurences(tree, shape=None):
     else:
         counts = None
     
-    for tip in tqdm(get_tips(tree)):
+    for tip in tqdm(get_tips(tree), disable=not progress_bar):
         for n in follow_to_root(tip):
             if hasattr(n, 'count'):
                n.count += 1
@@ -116,11 +116,12 @@ def count_occurences(tree, shape=None):
                 counts[tuple(n.v)] += 1
     return counts
 
-def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0):
+def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0,
+                    progress_bar=False):
     for loc,n in tree.items():
         n.diam = 0
         
-    for tip in tqdm(get_tips(tree)):
+    for tip in tqdm(get_tips(tree), disable=not progress_bar):
         for n in follow_to_root(tip):
             if not hasattr(n, 'diam'):
                 n.diam = 0
