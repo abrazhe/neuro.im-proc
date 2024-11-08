@@ -13,6 +13,24 @@ def multi_savefig(fig, name, formats =('svg', 'png'), **kwargs):
         fig.savefig('.'.join([name,f]), **kwargs)
 
 
+def lean_axes(ax, is_twin=False,
+              dropped=True, hide = ('top', 'right')):
+    """plot only x and y axis, not a frame for subplot ax"""
+
+    if dropped:
+        for key in ('top', 'right','bottom', 'left'):
+            ax.spines[key].set_position(('outward', 6))
+
+    for key in hide:
+        ax.spines[key].set_visible(False)
+
+    ax.get_xaxis().tick_bottom()
+    if not is_twin:
+        ax.get_yaxis().tick_left()
+    else:
+        ax.get_yaxis().tick_right()
+    return 
+
 
 def make_seethrough_colormap(base_name='plasma', gamma=1.5,kcut=5):
     cm_base = plt.cm.get_cmap(base_name)

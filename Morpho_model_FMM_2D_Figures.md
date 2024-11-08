@@ -1376,11 +1376,13 @@ def gauss_blob(loc, sigma, shape):
 ```
 
 ```{code-cell} ipython3
-def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, soma_mask=None,verbose=False):
+def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, 
+                  soma_mask=None,verbose=False):
     if soma_mask is None:
         soma_mask = np.zeros(shape, bool)
     portrait = np.zeros(shape)
-    px_locs = np.indices(shape).reshape((2,-1)).T
+    ndim = len(shape)
+    px_locs = np.indices(shape).reshape((ndim,-1)).T
     ktree = sp.spatial.KDTree(px_locs)
     for loc, n in tqdm(tree.items(),disable=not verbose):
         diam = n.diam
@@ -1480,12 +1482,15 @@ pts_samplers = [
 ```{code-cell} ipython3
 %%time 
 
-fig, axs = plt.subplots(len(params)+1,len(pts_fractions), figsize=(9,9),
+fig1, axs = plt.subplots(len(params)+1,len(pts_fractions), figsize=(9,9),
                         sharex='col', sharey='col',
                         gridspec_kw=dict(hspace=0.05, wspace=0.05),
                        )
 
 final_trees = []
+labels = ['CR', 'VR', 'VP','VC']
+colors= ["#005f73", "#0a9396", "#ca6702", "#ae2012"]
+
 
 for j, (pset, sampler) in enumerate(zip(tqdm(params,desc='params'), pts_samplers)):
     tp_ratios = []
@@ -1501,14 +1506,25 @@ for j, (pset, sampler) in enumerate(zip(tqdm(params,desc='params'), pts_samplers
             ax.axis('off')
             title = f'{100*frac:1.1f}%' if frac<0.01 else f'{100*frac:1.0f}%'
             ax.set_title(title)
+
         ax = axs[j+1,k]
+        if k == 0:
+            ax.text(10,10, labels[j], color=colors[j], va='top')
         
         tree, speed, ttx = iffm.iterative_build_tree(filaments_ms,phi0,pts, **pset)
         ttxf = skfmm.travel_time(phi0, speed=speed)
         counts = iffm.count_occurences(tree, speed.shape)
-        iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
+        
+        if frac < 0.005:
+            gamma = 1.75
+        elif gamma < 0.1:
+            gamma = 2
+        else:
+            gamma = 2.25
+        
+        iffm.assign_diameters(tree,min_diam=0.25,gamma=gamma,max_diam=9)
         portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
-        top_p = 95 if frac < 0.1 else 99.5
+        top_p = 95 if frac < 0.01 else 99.5
         vmin,vmax=np.percentile(portrait[portrait>0],(1,top_p))
         #print(vmin,vmax)
         ax.imshow(portrait, vmin=0,vmax=vmax, cmap='BuPu')
@@ -1520,52 +1536,40 @@ for j, (pset, sampler) in enumerate(zip(tqdm(params,desc='params'), pts_samplers
         print('---', j,frac,'tip/source ratio:',tip_source_ratio)
     final_trees.append((tree, ttxf, pts, tips, tp_ratios))
 plt.tight_layout()
+vis.multi_savefig(fig1, 'figures/updated-phi0-patterns')
 ```
 
 ```{code-cell} ipython3
-fig
+fig1
 ```
 
 ```{code-cell} ipython3
-tips = np.array([t.v for t in iffm.get_tips(tree)])
-len(tips)/len(pts)
-```
+fig2 = plt.figure(figsize=(3,3))
 
-```{code-cell} ipython3
-#plt.hist(ttx[*pts.T],50, log=False, range=(0,200), density=True);
-plt.hist(ttxf[*tips.T],50, log=True,  density=True);
-```
+#colors= ["#005f73", "#0a9396", "#ca6702", "#ae2012"]
+#labels = ['CR', 'VR', 'VP','VC']
 
-```{code-cell} ipython3
-acc = []
-for t in tips:
-    p = iffm.apath_to_root(tree[tuple(t)])
-    acc.append((len(p), ttxf[tuple(t)]))
-
-acc = np.array(acc)
-```
-
-```{code-cell} ipython3
-plt.plot(acc[:,0], acc[:,1], '.',mfc='none',alpha=0.1)
-```
-
-```{code-cell} ipython3
-plt.figure(figsize=(3,3))
-
-labels = ['CR', 'UR', 'UP','UC']
-for lab,coll in zip(labels,final_trees):
+for lab,coll,color in zip(labels,final_trees,colors):
     tpr = coll[-1]
-    plt.plot(pts_fractions, tpr, 'o-', label=lab,mfc='none',)
-plt.legend()
+    plt.plot(pts_fractions, tpr, 'o-', label=lab,mfc='none',color=color)
+plt.legend(loc=(1.05, 0.5))
 ax = plt.gca()
 ax.set(xscale='log', xlabel='source density', ylabel='tip fraction')
+vis.lean_axes(ax)
+vis.multi_savefig(fig2, 'figures/updated-phi0-tip-fractions')
+```
+
+```{code-cell} ipython3
+reload(vis)
 ```
 
 ```{code-cell} ipython3
 #plt.figure()
-fig, axs = plt.subplots(1,4, sharey=True,sharex=True, figsize=(12,3), gridspec_kw=dict(wspace=0.25))
+fig3, axs = plt.subplots(2,4, sharey='row', sharex='row', 
+                        figsize=(9,6), 
+                        gridspec_kw=dict(wspace=0.25, hspace=0.5))
 
-for lab,coll,ax in zip(labels,final_trees,axs):
+for j,lab,coll,color in zip(range(100), labels,final_trees,colors):
     tree, ttxf, pts, tips, tp_ratios = coll
     atips = np.array([t.v for t in tips])
     acc = []
@@ -1573,69 +1577,79 @@ for lab,coll,ax in zip(labels,final_trees,axs):
         p = iffm.apath_to_root(tree[tuple(t)])
         acc.append((len(p), ttxf[tuple(t)]))
     acc = np.array(acc)
-    ax.plot(acc[:,0], acc[:,1], '.',mfc='w',alpha=1,color='gray', label=lab)
+    ax = axs[0,j]
+    ax.hist(ttxf[*atips.T],50, log=False, color=color, density=True, label=lab,lw=1.5);
+    ax.set_xlabel('travel time, a.u.')
+    ax = axs[1,j]
+    #ax.plot(acc[:,0], acc[:,1], '.',mfc='w',alpha=1,color='gray', label=lab)
+    ax.hexbin(acc[:,0], acc[:,1], cmap='Blues', bins='log')
     #plt.plot(acc[:,0], acc[:,1], ',',alpha=0.1, label=lab)
+    ax.set(xlabel='path length, a.u.')
+
+for ax in np.ravel(axs):
+    vis.lean_axes(ax)
     
-
+axs[0,0].set_ylabel('Prob. density')
+axs[1,0].set_ylabel('travel time, a.u.')
 #plt.legend()
+vis.multi_savefig(fig3, 'figures/updated-phi0-travel-times')
 ```
 
 ```{code-cell} ipython3
-plt.figure()
+# plt.figure()
 
-for lab,coll in zip(labels,final_trees):
-    tree, ttxf, pts, tips, tp_ratios = coll
-    atips = np.array([t.v for t in tips])
-    plt.hist(ttxf[*atips.T],50, log=False, range=(0,200), density=True, 
-             label=lab,
-             histtype='step',lw=1.5);
+# for lab,coll in zip(labels,final_trees):
+#     tree, ttxf, pts, tips, tp_ratios = coll
+#     atips = np.array([t.v for t in tips])
+#     plt.hist(ttxf[*atips.T],50, log=False, range=(0,200), density=True, 
+#              label=lab,
+#              histtype='step',lw=1.5);
 
-plt.legend()
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
-                                             phi0, 
-                                             uniform_locs_dense[:int(round(Ntotal*0.002))], 
-                                             scaling='linear',
-                                             tm_mask=~phi0, 
-                                             batch_size=1,
-                                             batch_size_alpha=1.1)
-#plt.figure()
-#plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
-#ax = plt.gca()
-#plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
-#plt.tight_layout(); ax.axis('off')
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
-counts = iffm.count_occurences(tree, speed.shape)
-#plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu')
-iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
-portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
-plt.imshow(portrait,  cmap='BuPu')
-#plt.plot(255,255,'o',color='purple',mfc='none')
-plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
-
-plt.axis('off')
-#plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(uc.clip_outliers(portrait),  cmap='BuPu'); plt.colorbar()
-plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
-plt.axis('off')
+# plt.legend()
 ```
 
 ```{code-cell} ipython3
 
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              uniform_locs_dense[:int(round(Ntotal*0.002))], 
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, 
+#                                              batch_size=1,
+#                                              batch_size_alpha=1.1)
+# #plt.figure()
+# #plt.imshow(np.ma.masked_less(uniform_prob,1e-10), cmap='Wistia', alpha=0.25, )
+# #ax = plt.gca()
+# #plot_tree(tree, random_colors=False, mfc='k', linecolor='k', lw=0.75, ax=ax)
+# #plt.tight_layout(); ax.axis('off')
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+# counts = iffm.count_occurences(tree, speed.shape)
+# #plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu')
+# iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
+# portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
+# plt.imshow(portrait,  cmap='BuPu')
+# #plt.plot(255,255,'o',color='purple',mfc='none')
+# plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
+
+# plt.axis('off')
+# #plt.colorbar()
+```
+
+```{code-cell} ipython3
+# plt.imshow(uc.clip_outliers(portrait),  cmap='BuPu'); plt.colorbar()
+# plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
+# plt.axis('off')
+```
+
+```{code-cell} ipython3
 # iffm.assign_diameters_logcounts(tree,min_diam=1,max_diam=16)
 
 # portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
@@ -1656,27 +1670,27 @@ plt.axis('off')
 ```
 
 ```{code-cell} ipython3
-reload(iffm)
+# reload(iffm)
 ```
 
 ```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
-                                             phi0, 
-                                             uniform_locs_dense[:128], 
-                                             scaling='linear',
-                                             tm_mask=~phi0, 
-                                             batch_size=1,
-                                             batch_size_alpha=1.1,
-                                             do_phi0_update=True,
-                                             max_count_phi0=32)
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
-counts = iffm.count_occurences(tree, speed.shape)
-plt.figure(); plt.imshow(np.log2(1+counts),  cmap='BuPu'); plt.axis('off')
-plt.plot(255,255,'o',color='purple',mfc='none')
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              uniform_locs_dense[:128], 
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, 
+#                                              batch_size=1,
+#                                              batch_size_alpha=1.1,
+#                                              do_phi0_update=True,
+#                                              max_count_phi0=32)
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+# counts = iffm.count_occurences(tree, speed.shape)
+# plt.figure(); plt.imshow(np.log2(1+counts),  cmap='BuPu'); plt.axis('off')
+# plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
-import ucats as uc
+#import ucats as uc
 ```
 
 ```{code-cell} ipython3
@@ -1684,32 +1698,32 @@ import ucats as uc
 ```
 
 ```{code-cell} ipython3
-2**16
+#2**16
 ```
 
 ```{code-cell} ipython3
-2**np.arange(8,17,2)
+#2**np.arange(8,17,2)
 ```
 
 ```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
-                                             phi0, 
-                                             uc.scramble.local_jitter(
-                                                 np.array(
-                                                     sorted(uniform_locs_dense[:2**8],
-                                                            key=lambda x: -eu_dist(x, (255,255))))),
-                                             scaling='linear',
-                                             tm_mask=~phi0, 
-                                             batch_size=1,
-                                             batch_size_alpha=1.1,
-                                             do_phi0_update=True,
-                                             max_count_phi0=32)
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
-counts = iffm.count_occurences(tree, speed.shape)
-plt.figure(); 
-plt.imshow(np.log2(1+counts), interpolation='nearest',   cmap='BuPu'); plt.axis('off')
-plt.plot(255,255,'o',color='purple',mfc='none')
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              uc.scramble.local_jitter(
+#                                                  np.array(
+#                                                      sorted(uniform_locs_dense[:2**8],
+#                                                             key=lambda x: -eu_dist(x, (255,255))))),
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, 
+#                                              batch_size=1,
+#                                              batch_size_alpha=1.1,
+#                                              do_phi0_update=True,
+#                                              max_count_phi0=32)
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+# counts = iffm.count_occurences(tree, speed.shape)
+# plt.figure(); 
+# plt.imshow(np.log2(1+counts), interpolation='nearest',   cmap='BuPu'); plt.axis('off')
+# plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
@@ -1719,30 +1733,29 @@ plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
-tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
-                                             phi0, 
-                                             sorted(uniform_locs_dense[:250], 
-                                                    key=lambda x: eu_dist(x, (255,255))),
-                                             scaling='linear',
-                                             tm_mask=~phi0, 
-                                             batch_size=1,
-                                             batch_size_alpha=1.1,
-                                             do_phi0_update=True,
-                                             max_count_phi0=32)
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
-#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
-counts = iffm.count_occurences(tree, speed.shape)
-plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu'); plt.axis('off')
-plt.plot(255,255,'o',color='purple',mfc='none')
+# tree, speed, ttx = iffm.iterative_build_tree(filaments_ms, 
+#                                              phi0, 
+#                                              sorted(uniform_locs_dense[:250], 
+#                                                     key=lambda x: eu_dist(x, (255,255))),
+#                                              scaling='linear',
+#                                              tm_mask=~phi0, 
+#                                              batch_size=1,
+#                                              batch_size_alpha=1.1,
+#                                              do_phi0_update=True,
+#                                              max_count_phi0=32)
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='plasma')
+# #plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+# counts = iffm.count_occurences(tree, speed.shape)
+# plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu'); plt.axis('off')
+# plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
+# iffm.assign_diameters(tree,min_diam=0.25,gamma=2.5,max_diam=9)
 
-iffm.assign_diameters(tree,min_diam=0.25,gamma=2.5,max_diam=9)
+# portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
 
-portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
-
-plt.imshow(portrait,  cmap='BuPu')
+# plt.imshow(portrait,  cmap='BuPu')
 ```
 
 **NB** make diameters proportional to log counts?
@@ -1776,19 +1789,19 @@ plt.imshow(portrait,  cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
-plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
-reload(iffm)
+#reload(iffm)
 ```
 
 ```{code-cell} ipython3
-iffm.assign_diameters(tree, max_diam=12)
+#iffm.assign_diameters(tree, max_diam=12)
 ```
 
 ```{code-cell} ipython3
-counts = iffm.count_occurences(tree, speed.shape)
+#counts = iffm.count_occurences(tree, speed.shape)
 ```
 
 ```{code-cell} ipython3
@@ -1803,7 +1816,7 @@ counts = iffm.count_occurences(tree, speed.shape)
 ```
 
 ```{code-cell} ipython3
-plt.imshow(np.log2(1 + counts),cmap='BuPu')
+#plt.imshow(np.log2(1 + counts),cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
@@ -1815,7 +1828,7 @@ plt.imshow(np.log2(1 + counts),cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
-plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
+#plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
@@ -1852,84 +1865,84 @@ plt.figure(); plt.imshow(np.log2(1+speed), interpolation='nearest', cmap='BuPu')
 ```
 
 ```{code-cell} ipython3
-iffm.assign_diameters(tree, max_diam=12, gamma=1.25)
-portrait = make_portrait(tree, speed.shape, min_diam_show=0.02,
-                         fill_soma=True,soma_mask=~phi0)
+# iffm.assign_diameters(tree, max_diam=12, gamma=1.25)
+# portrait = make_portrait(tree, speed.shape, min_diam_show=0.02,
+#                          fill_soma=True,soma_mask=~phi0)
 ```
 
 ```{code-cell} ipython3
-plt.imshow(portrait, cmap='gray_r')
+#plt.imshow(portrait, cmap='gray_r')
 ```
 
 ```{code-cell} ipython3
-reload(iffm)
+#reload(iffm)
 ```
 
 ```{code-cell} ipython3
-print(len(tree), len(iffm.get_tips(tree)))
+#print(len(tree), len(iffm.get_tips(tree)))
 ```
 
 ```{code-cell} ipython3
-twigs = []
-for tip in iffm.get_tips(tree):
-    twig = iffm.prune_twig(tip, min_length=10, max_count_diff=5)
-    if len(twig):
-        twigs.append(twig)
+# twigs = []
+# for tip in iffm.get_tips(tree):
+#     twig = iffm.prune_twig(tip, min_length=10, max_count_diff=5)
+#     if len(twig):
+#         twigs.append(twig)
 ```
 
 ```{code-cell} ipython3
-len(twigs), len(iffm.get_tips(tree)), len(tree)
+#len(twigs), len(iffm.get_tips(tree)), len(tree)
 ```
 
 ```{code-cell} ipython3
-iffm.assign_diameters(tree, max_diam=12, gamma=1.25)
-portrait2 = make_portrait(tree, speed.shape, min_diam_show=0.02)
-plt.imshow(portrait2, cmap='gray_r')
+# iffm.assign_diameters(tree, max_diam=12, gamma=1.25)
+# portrait2 = make_portrait(tree, speed.shape, min_diam_show=0.02)
+# plt.imshow(portrait2, cmap='gray_r')
 ```
 
 ```{code-cell} ipython3
-twig_tree = dict()
-for twig in twigs:
-    for p in twig:
-        twig_tree[tuple(p.v)] = p
+# twig_tree = dict()
+# for twig in twigs:
+#     for p in twig:
+#         twig_tree[tuple(p.v)] = p
 ```
 
 ```{code-cell} ipython3
-clean_tree = dict()
-for loc, p in tree.items():
-    if len(iffm.follow_to_root(p))>10:
-        if not loc in twig_tree:
-            clean_tree[loc] = p
+# clean_tree = dict()
+# for loc, p in tree.items():
+#     if len(iffm.follow_to_root(p))>10:
+#         if not loc in twig_tree:
+#             clean_tree[loc] = p
 ```
 
 ```{code-cell} ipython3
-len(twig_tree), len(clean_tree)
+#len(twig_tree), len(clean_tree)
 ```
 
 ```{code-cell} ipython3
-portrait3 = make_portrait(twig_tree, speed.shape, min_diam_show=0.01)
-plt.imshow(portrait3, cmap='gray_r')
+# portrait3 = make_portrait(twig_tree, speed.shape, min_diam_show=0.01)
+# plt.imshow(portrait3, cmap='gray_r')
 ```
 
 ```{code-cell} ipython3
-plt.imshow(iffm.count_occurences(twig_tree, speed.shape))
+#plt.imshow(iffm.count_occurences(twig_tree, speed.shape))
 ```
 
 ```{code-cell} ipython3
-iffm.assign_diameters(clean_tree, max_diam=12, gamma=1.25)
-portrait_clean = make_portrait(clean_tree, speed.shape,
-                               fill_soma=True,
-                               soma_mask = ~phi0,
-                               min_diam_show=0.01)
-plt.imshow(portrait_clean, cmap='gray_r')
+# iffm.assign_diameters(clean_tree, max_diam=12, gamma=1.25)
+# portrait_clean = make_portrait(clean_tree, speed.shape,
+#                                fill_soma=True,
+#                                soma_mask = ~phi0,
+#                                min_diam_show=0.01)
+# plt.imshow(portrait_clean, cmap='gray_r')
 ```
 
 ```{code-cell} ipython3
-plt.imshow(np.dstack([portrait, portrait_clean,portrait_clean]))
+#plt.imshow(np.dstack([portrait, portrait_clean,portrait_clean]))
 ```
 
 ```{code-cell} ipython3
-plt.imshow(iffm.count_occurences(clean_tree, speed.shape)**0.25)
+#plt.imshow(iffm.count_occurences(clean_tree, speed.shape)**0.25)
 ```
 
 ```{code-cell} ipython3
@@ -1987,7 +2000,7 @@ def tri_grid(nx, ny):
 ```
 
 ```{code-cell} ipython3
-tri_locs = grid2points(*tri_grid(4,5))
+tri_locs = grid2points(*tri_grid(3*3,3*2))
 ```
 
 ```{code-cell} ipython3
@@ -2000,7 +2013,7 @@ plt.axis('equal')
 ```
 
 ```{code-cell} ipython3
-tri_locsr = np.maximum(tri_locs + np.clip(np.random.randn(*tri_locs.shape)*0.25, -0.25,0.25),0)
+tri_locsr = np.maximum(tri_locs + np.clip(np.random.randn(*tri_locs.shape)*0.15, -0.25,0.25),0)
 ```
 
 ```{code-cell} ipython3
@@ -2029,6 +2042,18 @@ plt.axis('equal')
 ```
 
 ```{code-cell} ipython3
+field_shape_w = (512, 256*3)
+
+filaments_ms_w = uc.utils.rescale(sum(s**2*morpho.sato2d(np.random.randn(*field_shape_w), s)
+                                      for s in (1.5, 3, 6, 12)))
+speed_w = filaments_ms_w
+```
+
+```{code-cell} ipython3
+seeds[seeds[:,0] < 50]
+```
+
+```{code-cell} ipython3
 # seeds =  np.array([(255,255), 
 #                    (64,64), 
 #                    (300, 64),
@@ -2040,22 +2065,20 @@ plt.axis('equal')
 #                        if eu_dist(s,(255,255)) > 250]
 
 
-seeds = tri_locsr[:,::-1]*150
-seeds = seeds[(seeds[:,0]>10)*(seeds[:,1]>10)*(seeds[:,0]<500)*(seeds[:,1]<500)]
+seeds = tri_locsr[:,::-1]*100
+seeds = seeds[(seeds[:,0]>10)*(seeds[:,1]>10)*(seeds[:,0]<500)*(seeds[:,1]<750)]
+
+#seeds[seeds[:,0] < 50] += (50, 0)
 
 seeds = np.array(seeds)
 #seeds = np.concatenate(([(255,255)],seeds))
 #seeds += np.random.randint(-16,16, size=(len(seeds),2))
-plt.imshow(speed)
+plt.imshow(speed_w)
 plt.plot(seeds[:,1], seeds[:,0], 'r.')
 ```
 
 ```{code-cell} ipython3
 
-```
-
-```{code-cell} ipython3
-x = np.indices((2,3))
 ```
 
 ```{code-cell} ipython3
@@ -2069,12 +2092,12 @@ x = np.indices((2,3))
 ```{code-cell} ipython3
 kdt = sp.spatial.KDTree(seeds)
 
-px_locs = (np.indices(speed.shape)
+px_locs = (np.indices(speed_w.shape)
            .reshape((2,-1))
            .T)
 
 labels = kdt.query(px_locs)[1] + 1
-labels = labels.reshape(speed.shape)
+labels = labels.reshape(speed_w.shape)
 plt.imshow(labels)
 ```
 
@@ -2083,7 +2106,7 @@ valid_inits = kdt.query_ball_point(px_locs, 100,return_length=True)
 ```
 
 ```{code-cell} ipython3
-somata_mask = kdt.query_ball_point(px_locs, 5,return_length=True).reshape(speed.shape)>0
+somata_mask = kdt.query_ball_point(px_locs, 5,return_length=True).reshape(speed_w.shape)>0
 ```
 
 ```{code-cell} ipython3
@@ -2099,26 +2122,26 @@ plt.imshow(somata_mask)
 #phi0[255,255] = 1
 #phi0[250,150] = phi0[255,430] = 1
 #phi0 = ndi.binary_dilation(phi0,iterations=2)
-phi0 = somata_mask
-plt.imshow(phi0, interpolation='nearest')
+phi0_w = somata_mask
+plt.imshow(phi0_w, interpolation='nearest')
 
-phi0 = ~phi0
+phi0_w = ~phi0_w
 ```
 
 ```{code-cell} ipython3
-ttx = skfmm.travel_time(phi0, speed=speed)
+ttx = skfmm.travel_time(phi0_w, speed=speed_w)
 #ttx = ttx*(ttx>0)
 #ttx[ttx.mask] = np.max(ttx)
 #ttx = np.array(ttx)
 ttx = np.ma.filled(ttx,np.max(ttx))
 
 #boundary_mask = labels == 1
-boundary_mask = ttx < np.percentile(ttx,50)
+boundary_mask = ttx < np.percentile(ttx,85)
 
 plt.figure()
 plt.imshow(ttx,cmap='BuPu', vmax=np.percentile(ttx[ttx<np.max(ttx)],99)); plt.colorbar()
 #plt.contour(ttx, levels=[np.percentile(ttx, 25)], colors='c')
-#plt.contour(boundary_mask, levels=[0.5], colors='r',linewidths=0.75)
+plt.contour(boundary_mask, levels=[0.5], colors='r',linewidths=0.75)
 ```
 
 ```{code-cell} ipython3
@@ -2130,675 +2153,233 @@ plt.imshow(ttx,cmap='BuPu', vmax=np.percentile(ttx[ttx<np.max(ttx)],99)); plt.co
 ```
 
 ```{code-cell} ipython3
-tm_mask = ndi.binary_dilation(ttx<=np.percentile(ttx,0.5),iterations=1)
-plt.imshow(tm_mask)
+tm_mask_w = ndi.binary_dilation(ttx<=np.percentile(ttx,0.5),iterations=1)
+plt.imshow(tm_mask_w)
+```
+
+```{code-cell} ipython3
+uniform_prob_w = ndi.gaussian_filter(np.ones(field_shape_w)*boundary_mask,5)
+uniform_prob_w /= uniform_prob_w.sum()
+plt.imshow(uniform_prob_w + tm_mask_w)
+```
+
+```{code-cell} ipython3
+seeds_w = sample_points(uniform_prob_w, np.sum(uniform_prob_w>0)) 
+```
+
+```{code-cell} ipython3
+len(seeds_w)*0.1
+```
+
+```{code-cell} ipython3
+tree_w, speedx_w, ttx_w = iffm.iterative_build_tree(speed_w, 
+                                             phi0_w, 
+                                             seeds_w[:35600], 
+                                             scaling='linear',
+                                             tm_mask=tm_mask_w, 
+                                             batch_size=1,
+                                             batch_size_alpha=1.1)
+plt.figure(); plt.imshow(np.log2(1+speedx_w), interpolation='nearest', cmap='PuBu')
+counts = iffm.count_occurences(tree_w, speedx_w.shape)
+plt.figure(); plt.imshow(np.log2(1+counts), interpolation='nearest', cmap='BuPu')
+
+iffm.assign_diameters(tree_w,min_diam=0.25,gamma=2.25,max_diam=12)
+portrait_w = make_portrait(tree_w, speedx_w.shape, fill_soma=True, soma_mask=tm_mask_w)
+plt.imshow(portrait_w,  cmap='BuPu')
+#plt.plot(255,255,'o',color='purple',mfc='none')
+#plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
+
+plt.axis('off')
+#plt.colorbar()
+```
+
+```{code-cell} ipython3
+fig = plt.figure()
+
+iffm.assign_diameters(tree_w,min_diam=0.25,gamma=1.85,max_diam=12)
+portrait_w = make_portrait(tree_w, speedx_w.shape, fill_soma=True, soma_mask=tm_mask_w)
+plt.imshow(portrait_w,  cmap='BuPu')
+plt.axis('off')
+vis.multi_savefig(fig, 'figures/network-example')
+```
+
+```{code-cell} ipython3
+
+soma_labels,ns = ndi.label(tm_mask_w)
+ksoma = np.random.randint(ns)+1
+random_soma = soma_labels == ksoma
+plt.imshow(random_soma)
+```
+
+```{code-cell} ipython3
+ttx_fin = skfmm.travel_time(~random_soma, portrait_w+0.01)
+#ttx_fin = ttx_fin.filled(ttx_fin.max())
+```
+
+```{code-cell} ipython3
+fig = plt.figure()
+plt.imshow(portrait_w,  cmap='BuPu')
+plt.axis('off')
+tmax = 2718
+plt.imshow(np.ma.masked_greater_equal(ttx_fin,tmax),vmax=tmax, cmap='Spectral', alpha=0.5); 
+#plt.colorbar()
+plt.tight_layout()
+vis.multi_savefig(fig, 'figures/network-with-ttx')
+```
+
+```{code-cell} ipython3
+#plt.imshow(speedx_w)
+```
+
+```{code-cell} ipython3
+plt.imshow(filaments_ms[:256,:256])
+```
+
+## 3D
+
+```{code-cell} ipython3
+%time 
+field_shape_3d = (200, 200, 200)
+
+filaments_ms_3d = uc.utils.rescale(sum(s**2*morpho.sato3d(np.random.randn(*field_shape_3d), s)
+                                      for s in tqdm((1.5, 3, 6, 12))))
+speed_3d = filaments_ms_3d
+```
+
+```{code-cell} ipython3
+plt.imshow(filaments_ms_3d[100])
+```
+
+```{code-cell} ipython3
+_=1
+```
+
+```{code-cell} ipython3
+speed_3d.shape
+```
+
+```{code-cell} ipython3
+phi03d = np.zeros(field_shape_3d)
+phi03d[100-1:100+1,100-1:100+1,100-1:100+1] = 1
+phi03d = ndi.binary_dilation(phi03d, iterations=2)
+plt.imshow(phi03d.max(0))
+```
+
+```{code-cell} ipython3
+plt.imshow(phi03d.max(1))
+```
+
+```{code-cell} ipython3
+plt.imshow(phi03d.max(2))
+```
+
+```{code-cell} ipython3
+phi03d = ~phi03d
+```
+
+```{code-cell} ipython3
+plt.imshow(speed_3d[20])
+```
+
+```{code-cell} ipython3
+plt.imshow(speed_3d[:,15])
+```
+
+```{code-cell} ipython3
+%time ttx3d = skfmm.travel_time(phi03d, speed=speed_3d)
+```
+
+```{code-cell} ipython3
+plt.imshow(ttx3d.max(0))
+```
+
+```{code-cell} ipython3
+plt.imshow(ttx3d.mask[100])
+```
+
+```{code-cell} ipython3
+ttx3df = ttx3d.filled(ttx3d.max())
+```
+
+```{code-cell} ipython3
+plt.imshow(ttx3df[64])
+```
+
+```{code-cell} ipython3
+#np.percentile(np.ravel(ttx3d),0.01)
+```
+
+```{code-cell} ipython3
+tm_mask_3d = ndi.binary_dilation(ttx3d==0,iterations=1)
+plt.imshow(tm_mask_3d[100])
+```
+
+```{code-cell} ipython3
+boundary_mask = ndi.binary_dilation(ttx3df<=np.percentile(ttx3d,50),iterations=1)
+
+plt.imshow(boundary_mask[100])
+```
+
+```{code-cell} ipython3
+plt.imshow(boundary_mask[:,100])
+```
+
+```{code-cell} ipython3
+pts_all3d = np.random.permutation(np.array(np.where(boundary_mask)).T)
+pts_all3d.shape
+```
+
+```{code-cell} ipython3
+reload(iffm)
+```
+
+```{code-cell} ipython3
+tree_3d, speedx_3d, ttx_3d = iffm.iterative_build_tree(speed_3d, 
+                                             phi03d, 
+                                             pts_all3d[:10],
+                                             scaling='linear',
+                                             tm_mask=tm_mask_3d, 
+                                             batch_size=1,
+                                             batch_size_alpha=1.1)
+plt.figure(); plt.imshow(np.log2(1+speedx_3d.max(0)), interpolation='nearest', cmap='PuBu')
+```
+
+```{code-cell} ipython3
+counts = iffm.count_occurences(tree_3d, speedx_3d.shape)
+
+plt.figure(); plt.imshow(np.log2(1+counts.max(0)), interpolation='nearest', cmap='BuPu')
+
+iffm.assign_diameters(tree_3d, min_diam=0.25,gamma=2.25,max_diam=12)
+portrait_3d = make_portrait(tree_3d, speedx_3d.shape, fill_soma=True, soma_mask=tm_mask_3d)
+plt.figure(); plt.imshow(portrait_3d.max(0),  cmap='BuPu')
+```
+
+```{code-cell} ipython3
+klist = list(tree_3d.keys())
+```
+
+```{code-cell} ipython3
+n = tree_3d[klist[0]]
+```
+
+```{code-cell} ipython3
+n.v
+```
+
+```{code-cell} ipython3
+plt.imshow(counts[0])
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+#sp.spatial.KDTree?
 ```
 
 ---
-
-```{code-cell} ipython3
-def get_tips(tree):
-    return [n for n in tree.values() if not len(n.children)]
-
-def get_roots(tree):
-    return [n for n in tree.values() if not n.parent]
-
-def follow_to_root(tip, max_nodes=1000000):
-    acc = [tip]
-    for i in range(max_nodes):
-        parent = tip.parent
-        if parent is None:
-            break
-        tip = parent
-        acc.append(tip)
-        if i >= max_nodes-1:
-            print('limit reached')
-            break
-    return acc
-
-def follow_to_root_rec(tip):
-    if not tip.parent:
-        return [tip]
-    else:
-        return [tip] + follow_to_root(tip.parent)
-
-def follow_to_root_rec(tip):
-        return [tip] + ([] if not tip.parent else follow_to_root(tip.parent))
-
-def apath_to_root(tip):
-    return np.array([n.v for n in follow_to_root(tip)])
-    
-def count_occurences(tree, shape):
-    counts =  np.zeros(shape)
-    for tip in tqdm(get_tips(tree)):
-        for n in follow_to_root(tip):
-            if hasattr(n, 'count'):
-               n.count += 1
-            else:
-               n.count = 1
-            counts[tuple(n.v)] += 1
-    return counts
-    
-
-def plot_tree(tree, ax=None, random_colors=True, linecolor='m', lw=1, max_lw=10):
-    
-    if ax is None:
-        fig, ax = plt.subplots(1,1)
-
-    color = np.random.rand(3) if random_colors else linecolor
-    for loc,n in tree.items():
-        if n.parent is None:
-            ax.plot(n.v[1], n.v[0], 'r.')
-        
-        for ch in n.children:
-            vx = np.vstack([n.v, ch.v])
-            if hasattr(ch,'diam'):
-                lw = min(max_lw, ch.diam)
-            else:
-                lw = lw
-                
-            ax.plot(vx[:,1], vx[:,0], '-', lw=lw, alpha=0.95, color=color)
-    ax.axis('equal')
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-# gauss_locs = np.random.randint(10,500, size=(100,2))
-# plt.imshow(uc.clip_outliers(ttx), cmap='gray')
-# plt.plot(gauss_locs[:,0], gauss_locs[:,1], '.')
-```
-
-```{code-cell} ipython3
-#bumps = sum(ttx[tuple(loc[::-1])]*0.1*gauss_blob(loc, 10, ttx.shape) for loc in tqdm(gauss_locs))
-#plt.imshow(bumps); plt.colorbar()
-```
-
-```{code-cell} ipython3
-#ttx_bumps = ttx + bumps
-```
-
-```{code-cell} ipython3
-tree = dict()
-
-init_pts = np.random.randint(50,450, size=(10,2))
-
-
-#newtree = merging_rw_gd(ttx, (10,50), terminate_mask=tm_mask, nsteps=1000, tree=tree)
-fails = []
-for p in tqdm(init_pts):
-    path,success = merging_rw_gd(ttx, p, 
-                                 terminate_mask=tm_mask, 
-                                 pjitter=0.0, 
-                                 nsteps=10000, tree=tree)
-    if not success:
-        fails.append(path)
-
-explored = set()
-paths_prev = [self_avoiding_2d_gd(ttx, p, terminate_mask=tm_mask, 
-                                  pjitter=0,
-                                  nsteps=10000, travelled=explored)
-         for p in tqdm(init_pts)]
-```
-
-```{code-cell} ipython3
-len(tree)
-```
-
-```{code-cell} ipython3
-plt.imshow(uc.clip_outliers(ttx), cmap='gray')
-plot_tree(tree, ax=plt.gca(), random_colors=False, lw=0.75)
-#plt.plot(gauss_locs[:,0], gauss_locs[:,1], '.')
-for path in fails:
-    path = np.array([n.v for n in path])
-    plt.plot(*path.T[::-1], color='y',lw=0.75)
-#for path in paths_prev:
-#    plt.plot(*path.T[::-1], color='c',lw=0.75)
-```
-
-```{code-cell} ipython3
-#tm_mask[tuple(fails[-1][-1].v)]
-```
-
-```{code-cell} ipython3
-#paths[0]
-```
-
-```{code-cell} ipython3
-#%time path1 = np.array([n.v for n in follow_to_root(tree[tuple(init_pts[-1])])])
-path1 = apath_to_root(tree[tuple(init_pts[1])])
-plt.imshow(uc.clip_outliers(ttx), cmap='gray')
-plt.plot(path1[:,1], path1[:,0],'r')
-```
-
-```{code-cell} ipython3
-# plt.figure()
-# plt.plot(np.diff(ttx[path1[:,0],path1[:,1]]))
-# plt.plot(np.diff(ttxbumps[path1[:,0],path1[:,1]]))
-```
-
-```{code-cell} ipython3
-%time path2 = np.array([n.v for n in follow_to_root_rec(tree[tuple(init_pts[-1])])])
-```
-
-```{code-cell} ipython3
-plt.imshow(uc.clip_outliers(ttx), cmap='gray')
-plt.plot(*path1.T[::-1], 'r')
-plt.plot(*path2.T[::-1], 'b--')
-```
-
-```{code-cell} ipython3
-for tip in get_tips(tree):
-    p = apath_to_root(tip)
-    speed[tuple(p[:,i] for i in (0,1))] += 5
-plt.imshow(speed)
-```
-
-```{code-cell} ipython3
-ttx = skfmm.travel_time(phi0, speed=speed)
-plt.imshow(uc.clip_outliers(ttx))
-```
-
-```{code-cell} ipython3
-# #explored = set()
-
-# init_pts = np.random.randint(50,450, size=(10,2))
-
-# #path = self_avoiding_2d_gd(ttx, (10,50), terminate_mask=tm_mask, nsteps=1000, travelled=explored)
-
-# paths = [self_avoiding_2d_gd(ttx, p, terminate_mask=tm_mask, nsteps=1000, travelled=explored)
-#          for p in tqdm(init_pts)]
-```
-
-```{code-cell} ipython3
-# plt.imshow(ttx, cmap='gray')
-# for path in paths:
-#     plt.plot(path[:,1], path[:,0], '-', lw=0.75)
-```
-
-```{code-cell} ipython3
-from imfun.core.coords import eu_dist
-```
-
-```{code-cell} ipython3
-plt.imshow(boundary_mask)
-```
-
-```{code-cell} ipython3
-#init_pts = np.array([(i,j) for i in range(50,450) for j in range(50,450) 
-#                    if boundary_mask[(i,j)]])
-#                    #if eu_dist((i,j),(255,255)) < 200])
-
-init_pts = uc.masks.mask2points(boundary_mask)
-
-dists,_ = kdt.query(init_pts, k=1)
-
-#Npts = 5000
-init_pts_dense = np.random.permutation(init_pts)
-
-init_pts_sorted = np.random.permutation(init_pts)
-dists,_ = kdt.query(init_pts, k=1)
-
-
-#init_pts = sorted(init_pts, key=lambda p: eu_dist(p, (255,255)), reverse=True)
-init_pts = init_pts[np.argsort(dists)[::-1]]
-#init_pts_dense = sorted(init_pts_dense, key=lambda p: eu_dist(p, (255,255)), reverse=True)
-```
-
-```{code-cell} ipython3
-#dists
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-alpha**j
-```
-
-```{code-cell} ipython3
-len(tree), len(fails)
-```
-
-```{code-cell} ipython3
-plt.imshow(speed); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(speed_corr, interpolation='nearest'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-#plt.imshow(ttx, interpolation='nearest', vmax=np.percentile(ttx[ttx<np.max(ttx)],99)); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.figure(figsize=(10,10))
-plt.imshow(uc.clip_outliers(ttx), cmap='gray')
-plot_tree(tree, ax=plt.gca(), random_colors=False, lw=0.5)
-#for path in paths:
-#    plt.plot(path[:,1], path[:,0], '-', lw=0.75, color='r')
-```
-
-```{code-cell} ipython3
-plt.imshow(speed); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(speed_corr**0.5); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(np.log2(1 + speed_corr)); plt.colorbar()
-```
-
-```{code-cell} ipython3
-#plt.imshow(speed**2); plt.colorbar()
-```
-
-```{code-cell} ipython3
-fig,axs = plt.subplots(1,2, figsize=(12,5))
-axs[0].imshow(uc.clip_outliers(ttx0),cmap='Spectral')
-axs[1].imshow(uc.clip_outliers(ttx),cmap='Spectral')
-for ax in axs:
-    ax.axis(False)
-plt.tight_layout()
-```
-
-```{code-cell} ipython3
-Gx = nx.DiGraph()
-
-for tip in get_tips(tree):
-    ap = apath_to_root(tip)
-    Gx.add_edges_from(list(itt.pairwise(map(tuple, ap[::-1]))))
-```
-
-```{code-cell} ipython3
-#speed.shape
-```
-
-```{code-cell} ipython3
-counts1 = count_occurences(tree,speed.shape)
-```
-
-```{code-cell} ipython3
-counts = count_occurences_nx(Gx, speed.shape)
-```
-
-```{code-cell} ipython3
-plt.imshow(np.log10(1+counts), cmap='plasma')
-plt.colorbar()
-```
-
-```{code-cell} ipython3
-# plt.imshow(ndi.gaussian_filter(np.log10(10+counts),1.5), cmap='plasma')
-# plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(counts > 20, interpolation='nearest', cmap='plasma')
-plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(np.log(1 + speed)); plt.colorbar()
-```
-
-```{code-cell} ipython3
-#ttx2 = skfmm.travel_time(phi0, speed=speed0/5 + np.log10(1+counts))
-ttx2 = skfmm.travel_time(phi0, speed=speed)
-ttx2 = np.ma.filled(ttx2, np.max(ttx2))
-```
-
-```{code-cell} ipython3
-0.9**100
-```
-
-```{code-cell} ipython3
-plt.imshow(uc.clip_outliers(ttx2))
-plt.colorbar()
-```
-
-```{code-cell} ipython3
-# explored = set()
-# paths2 = []
-# for j,p0 in enumerate(tqdm(init_pts_dense[:500])):
-#     path = self_avoiding_2d_gd(ttx2, tuple(p0), terminate_mask=tm_mask, nsteps=1000, pjitter=0.0, travelled=explored.copy())
-#     end = tuple(path[-1])
-#     finished = tm_mask[end] or (end in explored)
-#     if finished:
-#         paths2.append(path)
-#         explored.update([tuple(p) for p in path])
-```
-
-```{code-cell} ipython3
-tree2 = dict()
-Npts_dense=-1
-for p0 in tqdm(init_pts_dense[:Npts_dense]):
-    if ttx2[tuple(p0)] == np.max(ttx2):
-        continue
-    try_path, finished = merging_rw_gd(ttx2, tuple(p0), 
-                                       terminate_mask=tm_mask, 
-                                       pjitter=0.0, 
-                                       nsteps=1000, 
-                                       tree=tree2)
-```
-
-```{code-cell} ipython3
-Gx2 = nx.DiGraph()
-for tip in get_tips(tree2):
-    ap = apath_to_root(tip)
-    Gx2.add_edges_from(list(itt.pairwise(map(tuple, ap[::-1]))))
-#for path in tqdm(paths2):
-#    Gx2.add_edges_from(list(itt.pairwise(map(tuple, path[::-1]))))
-```
-
-```{code-cell} ipython3
-counts2 = count_occurences_nx(Gx2,speed.shape)
-```
-
-```{code-cell} ipython3
-fig,axs = plt.subplots(1,2,figsize=(12,5))
-axs[0].imshow(np.log10(2+counts), cmap='plasma')
-axs[1].imshow(np.log10(10+counts2), cmap='plasma')
-
-plt.tight_layout()
-```
-
-```{code-cell} ipython3
-def assign_diameters(tree, min_diam=0.01, max_diam=6, gamma=1.0):
-    for loc,n in tree.items():
-        n.diam = 0
-        
-    for tip in tqdm(get_tips(tree)):
-        for n in follow_to_root(tip):
-            if not hasattr(n, 'diam'):
-                n.diam = 0
-            n.diam += min_diam**gamma
-    for loc,n in tree.items():
-        n.diam = min(max_diam, n.diam**(1/gamma))
-
-
-def assign_diameters_nx(G, min_diam=0.01, max_diam=6, gamma=1.0):
-    for n in G:
-        G.nodes[n]['diam'] = 0
-        
-    for tip in tqdm(gu.get_tips(G)):
-        for p in follow_to_root_nx(G,tip):
-            n = G.nodes[p]
-            n['diam'] += min_diam**gamma
-    for n in G:
-        G.nodes[n]['diam'] = min(max_diam, G.nodes[n]['diam']**(1/gamma))
-```
-
-```{code-cell} ipython3
-assign_diameters(tree, min_diam=0.1, gamma=1.5, max_diam=9)
-assign_diameters(tree2, min_diam=0.01, gamma=1.1, max_diam=9)
-```
-
-```{code-cell} ipython3
-plot_tree(tree, max_lw=4, random_colors=False,)
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-#[Gx2.nodes[n]['diam'] for n in gu.get_roots(Gx2)]
-```
-
-```{code-cell} ipython3
-def tanh_pulse(x0, width, sharpness=10):
-    hw = width/2
-    k = sharpness
-    def _pulse(x):
-        a = (1 + np.tanh((x-x0 + hw)*k))
-        b = (1 + np.tanh(-(x-x0 - hw)*k))
-        return a*b/4
-    return _pulse
-            
-
-def tanh_kern2d(x0=0,y0=0, xw=10, yw=10, sharpness=5):
-    kx = sharpness
-    def _pulse(x,y):
-        #a = (1 + np.tanh((x-x0 + xw/2)*kx + (y-y0 + yw/2)*kx))
-        a = (1 + np.tanh((x-x0 + xw/2)*kx))*(1 + np.tanh((y-y0 + yw/2)*kx))
-        #b = (1 + np.tanh(-(x-x0 - xw/2)*kx -(y-y0 - yw/2)*kx))
-        return a#*b/4
-    return _pulse
-        
-    
-
-def tanh_blob(loc, width, fullshape, sharpness=5):
-    xx,yy = np.mgrid[:fullshape[0],:fullshape[1]]
-    fn = tanh_kern2d(loc[1], loc[0], xw=width, yw=width, sharpness=sharpness)
-    return fn(xx,yy) 
-```
-
-```{code-cell} ipython3
-# x = tanh_blob((255,255), 6, counts.shape)
-# plt.imshow(x); plt.colorbar()
-```
-
-```{code-cell} ipython3
-# x = np.linspace(-2,2,500)
-
-# plt.plot(x, tanh_pulse(-0.5, 1.5, 20)(x))
-```
-
-```{code-cell} ipython3
-# x = gauss_blob((255,255), 16, counts.shape)
-# plt.imshow(x**0.5); plt.colorbar()
-# np.max(x)
-```
-
-```{code-cell} ipython3
-#plt.plot(x[255,:])
-```
-
-```{code-cell} ipython3
-kdt_x = sp.spatial.KDTree(px_locs)
-```
-
-```{code-cell} ipython3
-#len(kdt_x)
-```
-
-```{code-cell} ipython3
-%time ids =  kdt_x.query_ball_point((255,255),1)
-```
-
-```{code-cell} ipython3
-px_locs[ids]
-```
-
-```{code-cell} ipython3
-#portrait[*px_locs[ids].T]
-```
-
-```{code-cell} ipython3
-def make_portrait_nx(G, shape, min_diam_show=0, fill_soma=False, do_threshold=False):
-    portrait = np.zeros(counts.shape)
-
-    for n in tqdm(G):
-        diam = G.nodes[n]['diam']
-        if diam >= min_diam_show:
-            amp = np.log10(0.1+G.nodes[n]['count'])
-            #amp = diam
-            #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
-            blob = gauss_blob(n, diam/2, portrait.shape)
-            if do_threshold:
-                blob = 1.0*(blob>0.5*np.max(blob))
-            portrait = np.maximum(portrait, amp*blob)
-    if fill_soma:
-        portrait[tm_mask] = np.percentile(portrait[ndi.binary_dilation(tm_mask)],99)
-    #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
-    return portrait
-    
-```
-
-```{code-cell} ipython3
-def make_portrait_nx2(G, shape, min_diam_show=0, fill_soma=False):
-    portrait = np.zeros(shape)
-    px_locs = np.indices(shape).reshape((2,-1)).T
-    ktree = sp.spatial.KDTree(px_locs)
-    for n in tqdm(G):
-        diam = G.nodes[n]['diam']
-        if diam >= min_diam_show:
-            amp = np.log10(0.1+G.nodes[n]['count'])
-            #amp = diam
-            #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
-            knns = ktree.query_ball_point(n, diam/2)
-            locs = px_locs[knns]
-            for loc in locs:
-                l = tuple(loc)
-                portrait[l] = np.maximum(portrait[l],amp)
-    if fill_soma:
-        portrait[tm_mask] = np.percentile(portrait[ndi.binary_dilation(tm_mask)],99)
-    #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
-    return portrait
-    
-```
-
-```{code-cell} ipython3
-# portrait = np.zeros(counts.shape)
-
-# for n in tqdm(Gx):
-#     diam = Gx.nodes[n]['diam']
-#     if diam > 0.01:
-#         amp = np.log10(0.1+Gx.nodes[n]['count'])
-#         #amp = diam
-#         #portrait += amp*gauss_blob(n, diam/2, portrait.shape)
-#         portrait = np.maximum(portrait, amp*gauss_blob(n, diam/2, portrait.shape))
-
-
-#         #portrait = np.maximum(portrait, np.max(portrait)*gauss_blob((255,255), 10, counts.shape))
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-assign_diameters_nx(Gx, min_diam=0.1, gamma=1.1, max_diam=6)
-
-%time portrait = make_portrait_nx2(Gx, speed.shape, fill_soma=True)
-
-plt.imshow(portrait, cmap='plasma'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait,cmap='gray'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-# x = np.linspace(0.01, 10, 200)
-# for gamma in [ 0.5, 1., 1.5, 2]:
-#     plt.plot(x, (2*x**gamma)**(1/gamma), label=gamma)
-# plt.legend()
-```
-
-```{code-cell} ipython3
-assign_diameters_nx(Gx2, min_diam=0.01, gamma=1.2, max_diam=16)
-portrait2 = make_portrait_nx2(Gx2, speed.shape, min_diam_show=0.05, fill_soma=True)
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2, cmap='plasma'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2, cmap='gray_r')
-plt.axis('off')
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2 > 0.0, interpolation='nearest')
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2, cmap='gray')
-plt.axis('off')
-```
-
-```{code-cell} ipython3
-# portrait2 = np.zeros(counts.shape)
-# #portrait2 = 3*gauss_blob((255,255), 10, counts.shape)
-# for n in tqdm(Gx2):
-#     diam = Gx2.nodes[n]['diam']
-#     if diam > 0.01:
-#         amp = np.log10(0.1 + Gx2.nodes[n]['count'])
-#         #amp = diam
-#         blob = amp*gauss_blob(n, diam/2, portrait2.shape)
-#         portrait2 = np.maximum(portrait2, blob)
-# portrait2 = np.maximum(portrait2, np.log10(np.max(counts2))*gauss_blob((255,255), 10, counts.shape))
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2, cmap='plasma'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2, cmap='plasma'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-# started from the very tips
-plt.imshow(portrait2, cmap='plasma'); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2); plt.colorbar()
-```
-
-```{code-cell} ipython3
-plt.imshow(portrait2); plt.colorbar()
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-from imfun import ui
-```
-
-```{code-cell} ipython3
-ui.group_maps(ttx_acc[::10])
-```
-
-```{code-cell} ipython3
-#p = paths[0]
-```
-
-```{code-cell} ipython3
-#%timeit speed[tuple(p[:,i] for i in (0,1))]
-```
-
-```{code-cell} ipython3
-#%timeit ndi.map_coordinates(speed, p.T, order=1)
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-
-```
-
-```{code-cell} ipython3
-
-```

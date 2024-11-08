@@ -1,8 +1,30 @@
 import numpy as np
+import itertools as itt
+from functools import reduce, partial
+import operator as op
 
 from tqdm.auto import tqdm
 
-from imfun.bwmorph import neighbours_2
+#from imfun.bwmorph import neighbours_2
+
+def valid_loc(loc,shape):
+    "Test if location not outside bounds"
+    return reduce(op.__and__, [(0 <= x < s) for x,s in zip(loc,shape)])
+
+def neighbors(loc, shape):
+    ndim = len(loc)
+    shifts = set(itt.product([-1,0,1],repeat=ndim))
+    shifts.discard((0,)*ndim)
+    aloc = np.array(loc)
+    locs = (aloc + shift for shift in shifts)
+    return [tuple(loc) for loc in locs if valid_loc(loc, shape)]
+
+
+# Note also
+# (np.indices((3,3)) - 1).T.reshape(-1, 2)
+# (np.indices((3,)*ndim) - 1).T.reshape(-1, ndim)
+
+
 
 def follow_to_root_nx(g, tip, max_nodes=1000000):
     visited = {tip}
@@ -210,7 +232,7 @@ def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=10000, tree=None,
 
         # look for nearest neighbors, not already visited 
         # when building the current path
-        nns = (tuple(n) for n in np.array(neighbours_2(p, field.shape)).astype(int))
+        nns = (tuple(n) for n in np.array(neighbors(p, field.shape)).astype(int))
         nns = [n for n in nns if not n in visited]
         
         if not len(nns):
@@ -232,7 +254,7 @@ def merging_rw_gd(field, p0, terminate_mask=None,  nsteps=10000, tree=None,
             if np.random.rand() < pjitter:
                 # todo: approximately follow direction when choosing neighbor
                 nns2 = (tuple(n) for n in 
-                        np.array(neighbours(pnext, field.shape)).astype(int))
+                        np.array(neighbors(pnext, field.shape)).astype(int))
                 nns = [pnext] + [n for n in nns2 if n in nns]
                 pnext = nns[np.random.randint(len(nns))]
         
