@@ -1376,13 +1376,13 @@ def gauss_blob(loc, sigma, shape):
 ```
 
 ```{code-cell} ipython3
-def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, soma_mask=None):
+def make_portrait(tree, shape, min_diam_show=0, fill_soma=False, soma_mask=None,verbose=False):
     if soma_mask is None:
         soma_mask = np.zeros(shape, bool)
     portrait = np.zeros(shape)
     px_locs = np.indices(shape).reshape((2,-1)).T
     ktree = sp.spatial.KDTree(px_locs)
-    for loc, n in tqdm(tree.items()):
+    for loc, n in tqdm(tree.items(),disable=not verbose):
         diam = n.diam
         if diam >= min_diam_show:
             amp = np.log10(0.1+n.count)
@@ -1409,6 +1409,10 @@ uniform_locs_dense = sample_points(uniform_prob, np.sum(bmask_filt))
 
 ```{code-cell} ipython3
 len(uniform_locs_dense)
+```
+
+```{code-cell} ipython3
+
 ```
 
 ```{code-cell} ipython3
@@ -1441,8 +1445,13 @@ Ntotal = len(uniform_locs_dense)
 
 ```{code-cell} ipython3
 #pts_fractions = 0.002*3**np.arange(6)
-pts_fractions = 0.002*4**np.arange(5)
+#pts_fractions = 0.002*4**np.arange(5)
+pts_fractions = [0.002, 0.008, 0.03, 0.13, 0.5]
 pts_fractions
+```
+
+```{code-cell} ipython3
+#uniform_locs_dense
 ```
 
 ```{code-cell} ipython3
@@ -1457,7 +1466,7 @@ params = [
 
 pts_samplers = [
     lambda n: uniform_locs_dense[:round(int(n))],
-    lambda n: uniform_locs_dense[:round(int(n))],
+    lambda n: uc.scramble.local_jitter(uniform_locs_dense)[:round(int(n))],
     lambda n: uc.scramble.local_jitter(np.array(sorted(uniform_locs_dense[:round(int(n))],
                                                        key=lambda x: -eu_dist(x, (255,255))))),
     lambda n: uc.scramble.local_jitter(np.array(sorted(uniform_locs_dense[:round(int(n))],
@@ -1471,36 +1480,125 @@ pts_samplers = [
 ```{code-cell} ipython3
 %%time 
 
-fig, axs = plt.subplots(len(params)+1,len(pts_fractions), figsize=(15,6),
+fig, axs = plt.subplots(len(params)+1,len(pts_fractions), figsize=(9,9),
+                        sharex='col', sharey='col',
                         gridspec_kw=dict(hspace=0.05, wspace=0.05),
                        )
 
+final_trees = []
+
 for j, (pset, sampler) in enumerate(zip(tqdm(params,desc='params'), pts_samplers)):
+    tp_ratios = []
     for k,frac in enumerate(pts_fractions):
         n_pts = int(round(Ntotal*frac))
         pts = sampler(n_pts)
+        
         if j==0:
             ax = axs[0,k]
             ax.plot(pts[:,0], pts[:,1], 'k,')
             ax.axis('square')
             ax.axis([0,512,512,0])
             ax.axis('off')
-            ax.set_title(f'{round(100*frac,2)}%')
+            title = f'{100*frac:1.1f}%' if frac<0.01 else f'{100*frac:1.0f}%'
+            ax.set_title(title)
         ax = axs[j+1,k]
         
         tree, speed, ttx = iffm.iterative_build_tree(filaments_ms,phi0,pts, **pset)
+        ttxf = skfmm.travel_time(phi0, speed=speed)
         counts = iffm.count_occurences(tree, speed.shape)
         iffm.assign_diameters(tree,min_diam=0.25,gamma=2.25,max_diam=9)
         portrait = make_portrait(tree, speed.shape, fill_soma=True, soma_mask=~phi0)
-        ax.imshow(portrait, cmap='BuPu')
+        top_p = 95 if frac < 0.1 else 99.5
+        vmin,vmax=np.percentile(portrait[portrait>0],(1,top_p))
+        #print(vmin,vmax)
+        ax.imshow(portrait, vmin=0,vmax=vmax, cmap='BuPu')
         ax.plot(255,255, 'o', color='violet', mfc='none', ms=10)
         ax.axis('off')
-
+        tips = iffm.get_tips(tree)
+        tip_source_ratio = len(tips)/len(pts)
+        tp_ratios.append(tip_source_ratio)
+        print('---', j,frac,'tip/source ratio:',tip_source_ratio)
+    final_trees.append((tree, ttxf, pts, tips, tp_ratios))
 plt.tight_layout()
 ```
 
 ```{code-cell} ipython3
 fig
+```
+
+```{code-cell} ipython3
+tips = np.array([t.v for t in iffm.get_tips(tree)])
+len(tips)/len(pts)
+```
+
+```{code-cell} ipython3
+#plt.hist(ttx[*pts.T],50, log=False, range=(0,200), density=True);
+plt.hist(ttxf[*tips.T],50, log=True,  density=True);
+```
+
+```{code-cell} ipython3
+acc = []
+for t in tips:
+    p = iffm.apath_to_root(tree[tuple(t)])
+    acc.append((len(p), ttxf[tuple(t)]))
+
+acc = np.array(acc)
+```
+
+```{code-cell} ipython3
+plt.plot(acc[:,0], acc[:,1], '.',mfc='none',alpha=0.1)
+```
+
+```{code-cell} ipython3
+plt.figure(figsize=(3,3))
+
+labels = ['CR', 'UR', 'UP','UC']
+for lab,coll in zip(labels,final_trees):
+    tpr = coll[-1]
+    plt.plot(pts_fractions, tpr, 'o-', label=lab,mfc='none',)
+plt.legend()
+ax = plt.gca()
+ax.set(xscale='log', xlabel='source density', ylabel='tip fraction')
+```
+
+```{code-cell} ipython3
+#plt.figure()
+fig, axs = plt.subplots(1,4, sharey=True,sharex=True, figsize=(12,3), gridspec_kw=dict(wspace=0.25))
+
+for lab,coll,ax in zip(labels,final_trees,axs):
+    tree, ttxf, pts, tips, tp_ratios = coll
+    atips = np.array([t.v for t in tips])
+    acc = []
+    for t in atips:
+        p = iffm.apath_to_root(tree[tuple(t)])
+        acc.append((len(p), ttxf[tuple(t)]))
+    acc = np.array(acc)
+    ax.plot(acc[:,0], acc[:,1], '.',mfc='w',alpha=1,color='gray', label=lab)
+    #plt.plot(acc[:,0], acc[:,1], ',',alpha=0.1, label=lab)
+    
+
+#plt.legend()
+```
+
+```{code-cell} ipython3
+plt.figure()
+
+for lab,coll in zip(labels,final_trees):
+    tree, ttxf, pts, tips, tp_ratios = coll
+    atips = np.array([t.v for t in tips])
+    plt.hist(ttxf[*atips.T],50, log=False, range=(0,200), density=True, 
+             label=lab,
+             histtype='step',lw=1.5);
+
+plt.legend()
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
+
 ```
 
 ```{code-cell} ipython3
@@ -1531,13 +1629,12 @@ plt.axis('off')
 ```
 
 ```{code-cell} ipython3
-plt.imshow(portrait,  cmap='BuPu')
+plt.imshow(uc.clip_outliers(portrait),  cmap='BuPu'); plt.colorbar()
 plt.plot(255,255,'o',color='violet',mfc='none',ms=10)
 plt.axis('off')
 ```
 
 ```{code-cell} ipython3
-
 
 # iffm.assign_diameters_logcounts(tree,min_diam=1,max_diam=16)
 
@@ -1547,7 +1644,6 @@ plt.axis('off')
 ```
 
 ```{code-cell} ipython3
-
 
 ```
 
@@ -1641,7 +1737,6 @@ plt.plot(255,255,'o',color='purple',mfc='none')
 ```
 
 ```{code-cell} ipython3
-
 
 iffm.assign_diameters(tree,min_diam=0.25,gamma=2.5,max_diam=9)
 
