@@ -319,6 +319,8 @@ def iterative_build_tree(speed, phi0, seeds,
     count_unreachable =0
     count_seeds = 0
     fails = []
+
+    ndim = np.ndim(speed)
     
     j = 0
     
@@ -351,7 +353,8 @@ def iterative_build_tree(speed, phi0, seeds,
                                            tree=tree)
         if finished:
             apath = apath_to_root(tree[p0])
-            speed_upd[tuple(apath[:-1,i] for i in (0,1))] +=\
+            
+            speed_upd[tuple(apath[:-1,i] for i in range(ndim))] +=\
                                                     update_amp
             #speed += update_fn(speed_upd)
             speed = speed0 + update_fn(speed_upd)
