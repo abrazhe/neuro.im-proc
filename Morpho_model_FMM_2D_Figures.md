@@ -655,6 +655,14 @@ plt.imshow(bmask, alpha=0.25)
 ```
 
 ```{code-cell} ipython3
+np.sum(bmask)/np.prod(phi0.shape)
+```
+
+```{code-cell} ipython3
+
+```
+
+```{code-cell} ipython3
 seeds = np.array(np.where(bmask)).T
 #seeds = np.random.permutation(seeds)[:50]
 seeds = np.random.permutation(seeds)[:500]
@@ -987,7 +995,7 @@ uniform_locs_s2 = sorted(uniform_locs,
 ```
 
 ```{code-cell} ipython3
-
+uniform_locs_s2[:10]
 ```
 
 ```{code-cell} ipython3
@@ -2226,9 +2234,13 @@ len(seeds_w)*0.1
 ```
 
 ```{code-cell} ipython3
+35600/len(seeds_w)
+```
+
+```{code-cell} ipython3
 tree_w, speedx_w, ttx_w = iffm.iterative_build_tree(speed_w, 
                                              phi0_w, 
-                                             seeds_w[:35600], 
+                                             seeds_w[:int(len(seeds_w)*0.5)], 
                                              scaling='linear',
                                              tm_mask=tm_mask_w, 
                                              batch_size=1,
@@ -2250,11 +2262,11 @@ plt.axis('off')
 ```{code-cell} ipython3
 fig = plt.figure()
 
-iffm.assign_diameters(tree_w,min_diam=0.25,gamma=1.85,max_diam=12)
+iffm.assign_diameters(tree_w,min_diam=0.25,gamma=2.5,max_diam=12)
 portrait_w = make_portrait(tree_w, speedx_w.shape, fill_soma=True, soma_mask=tm_mask_w)
 plt.imshow(portrait_w,  cmap='BuPu')
 plt.axis('off')
-vis.multi_savefig(fig, 'figures/network-example')
+vis.multi_savefig(fig, 'figures/network-example-dense')
 ```
 
 ```{code-cell} ipython3
@@ -2265,7 +2277,7 @@ plt.imshow(random_soma)
 ```
 
 ```{code-cell} ipython3
-ttx_fin = skfmm.travel_time(~random_soma, portrait_w+0.01)
+ttx_fin = skfmm.travel_time(~random_soma, portrait_w+0.001)
 #ttx_fin = ttx_fin.filled(ttx_fin.max())
 ```
 
@@ -2273,11 +2285,28 @@ ttx_fin = skfmm.travel_time(~random_soma, portrait_w+0.01)
 fig = plt.figure()
 plt.imshow(portrait_w,  cmap='BuPu')
 plt.axis('off')
-tmax = 2718
+tmax = 2500
 plt.imshow(np.ma.masked_greater_equal(ttx_fin,tmax),vmax=tmax, cmap='Spectral', alpha=0.5); 
 #plt.colorbar()
 plt.tight_layout()
 vis.multi_savefig(fig, 'figures/network-with-ttx')
+```
+
+```{code-cell} ipython3
+plt.imshow(np.dstack([0*portrait_w,uc.utils.percentile_rescale(portrait_w),0*portrait_w]))
+```
+
+```{code-cell} ipython3
+from semlabca import continuous_poisson as cpoi
+```
+
+```{code-cell} ipython3
+portrait_w_x = cpoi.smooth_poisson_its_3d(0.01 + uc.utils.percentile_rescale(portrait_w))
+```
+
+```{code-cell} ipython3
+z = np.zeros(portrait_w.shape)
+plt.imshow(np.dstack([z, portrait_w_x, z]))
 ```
 
 ```{code-cell} ipython3
@@ -2422,7 +2451,6 @@ portrait_3d = make_portrait(tree_3d, speedx_3d.shape, fill_soma=True, soma_mask=
 ```
 
 ```{code-cell} ipython3
-
 plt.figure(); plt.imshow(np.log2(1+counts.max(0)), interpolation='nearest', cmap='BuPu')
 ```
 
@@ -2464,7 +2492,6 @@ pickle.dump(tree_3d, open('data/tree_3d.pickle', 'wb'))
 ```
 
 ```{code-cell} ipython3
-
 
 import visvis as vv
 ```
